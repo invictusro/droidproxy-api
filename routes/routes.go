@@ -29,6 +29,16 @@ func Setup(cfg *config.Config) *gin.Engine {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Debug endpoint to check config (temporary)
+	r.GET("/debug/config", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"api_base_url":  cfg.APIBaseURL,
+			"frontend_url":  cfg.FrontendURL,
+			"centrifugo_url": cfg.CentrifugoURL,
+			"env":           cfg.Env,
+		})
+	})
+
 	// Auth routes (no auth required)
 	auth := r.Group("/auth")
 	{
