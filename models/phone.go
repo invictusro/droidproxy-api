@@ -58,11 +58,11 @@ func generatePairingCode() string {
 }
 
 func generatePairingPIN() string {
-	// Generate 6-digit PIN
-	bytes := make([]byte, 3)
+	// Generate 4-digit PIN
+	bytes := make([]byte, 2)
 	rand.Read(bytes)
-	pin := (int(bytes[0])<<16 | int(bytes[1])<<8 | int(bytes[2])) % 1000000
-	return fmt.Sprintf("%06d", pin)
+	pin := (int(bytes[0])<<8 | int(bytes[1])) % 10000
+	return fmt.Sprintf("%04d", pin)
 }
 
 // PhoneResponse is the public representation

@@ -1,0 +1,125 @@
+0 verbose cli /opt/homebrew/Cellar/node@20/20.19.3/bin/node /opt/homebrew/bin/npm
+1 info using npm@10.8.2
+2 info using node@v20.19.3
+3 silly config load:file:/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/invictus/.npmrc
+5 silly config load:file:/Users/invictus/.npm-global/etc/npmrc
+6 verbose title npm install @anthropic-ai/claude-code
+7 verbose argv "install" "--global" "@anthropic-ai/claude-code"
+8 verbose logfile logs-max:10 dir:/Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T16_23_01_876Z-
+9 verbose logfile /Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T16_23_01_876Z-debug-0.log
+10 silly packumentCache heap:4345298944 maxSize:1086324736 maxEntrySize:543162368
+11 silly logfile done cleaning log files
+12 silly idealTree buildDeps
+13 silly fetch manifest @anthropic-ai/claude-code@*
+14 silly packumentCache full:https://registry.npmjs.org/@anthropic-ai%2fclaude-code cache-miss
+15 http fetch GET 200 https://registry.npmjs.org/@anthropic-ai%2fclaude-code 118ms (cache revalidated)
+16 silly packumentCache full:https://registry.npmjs.org/@anthropic-ai%2fclaude-code set size:820332 disposed:false
+17 silly placeDep ROOT @anthropic-ai/claude-code@2.1.37 OK for:  want: *
+18 silly fetch manifest @img/sharp-linux-arm@^0.33.5
+19 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linux-arm cache-miss
+20 silly fetch manifest @img/sharp-linux-x64@^0.33.5
+21 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linux-x64 cache-miss
+22 silly fetch manifest @img/sharp-win32-x64@^0.33.5
+23 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-win32-x64 cache-miss
+24 silly fetch manifest @img/sharp-darwin-x64@^0.33.5
+25 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-darwin-x64 cache-miss
+26 silly fetch manifest @img/sharp-linux-arm64@^0.33.5
+27 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linux-arm64 cache-miss
+28 silly fetch manifest @img/sharp-darwin-arm64@^0.33.5
+29 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-darwin-arm64 cache-miss
+30 silly fetch manifest @img/sharp-linuxmusl-x64@^0.33.5
+31 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linuxmusl-x64 cache-miss
+32 silly fetch manifest @img/sharp-linuxmusl-arm64@^0.33.5
+33 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linuxmusl-arm64 cache-miss
+34 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-arm 48ms (cache revalidated)
+35 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linux-arm set size:66643 disposed:false
+36 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-x64 100ms (cache revalidated)
+37 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linux-x64 set size:66311 disposed:false
+38 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-arm64 101ms (cache revalidated)
+39 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linux-arm64 set size:67207 disposed:false
+40 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-win32-x64 109ms (cache revalidated)
+41 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-win32-x64 set size:64388 disposed:false
+42 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-darwin-x64 113ms (cache revalidated)
+43 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-darwin-x64 set size:65222 disposed:false
+44 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linuxmusl-arm64 119ms (cache revalidated)
+45 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linuxmusl-arm64 set size:68298 disposed:false
+46 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linuxmusl-x64 130ms (cache revalidated)
+47 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-linuxmusl-x64 set size:67400 disposed:false
+48 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-darwin-arm64 137ms (cache revalidated)
+49 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-darwin-arm64 set size:66119 disposed:false
+50 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-darwin-arm64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+51 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-darwin-x64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+52 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-linux-arm@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+53 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-linux-arm64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+54 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-linux-x64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+55 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-linuxmusl-arm64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+56 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-linuxmusl-x64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+57 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-win32-x64@0.33.5 OK for: @anthropic-ai/claude-code@2.1.37 want: ^0.33.5
+58 silly fetch manifest @img/sharp-libvips-darwin-arm64@1.0.4
+59 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-darwin-arm64 cache-miss
+60 silly fetch manifest @img/sharp-libvips-darwin-x64@1.0.4
+61 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-darwin-x64 cache-miss
+62 silly fetch manifest @img/sharp-libvips-linux-arm@1.0.5
+63 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm cache-miss
+64 silly fetch manifest @img/sharp-libvips-linux-arm64@1.0.4
+65 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm64 cache-miss
+66 silly fetch manifest @img/sharp-libvips-linux-x64@1.0.4
+67 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linux-x64 cache-miss
+68 silly fetch manifest @img/sharp-libvips-linuxmusl-arm64@1.0.4
+69 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-arm64 cache-miss
+70 silly fetch manifest @img/sharp-libvips-linuxmusl-x64@1.0.4
+71 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-x64 cache-miss
+72 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-darwin-x64 48ms (cache revalidated)
+73 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-darwin-x64 set size:51923 disposed:false
+74 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm 49ms (cache revalidated)
+75 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm set size:58624 disposed:false
+76 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-arm64 54ms (cache revalidated)
+77 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-arm64 set size:54314 disposed:false
+78 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm64 57ms (cache revalidated)
+79 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm64 set size:55489 disposed:false
+80 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-x64 58ms (cache revalidated)
+81 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linux-x64 set size:56678 disposed:false
+82 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-darwin-arm64 64ms (cache revalidated)
+83 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-darwin-arm64 set size:52515 disposed:false
+84 http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-x64 63ms (cache revalidated)
+85 silly packumentCache full:https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-x64 set size:53685 disposed:false
+86 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-darwin-arm64@1.0.4 OK for: @img/sharp-darwin-arm64@0.33.5 want: 1.0.4
+87 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-darwin-x64@1.0.4 OK for: @img/sharp-darwin-x64@0.33.5 want: 1.0.4
+88 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-linux-arm@1.0.5 OK for: @img/sharp-linux-arm@0.33.5 want: 1.0.5
+89 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-linux-arm64@1.0.4 OK for: @img/sharp-linux-arm64@0.33.5 want: 1.0.4
+90 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-linux-x64@1.0.4 OK for: @img/sharp-linux-x64@0.33.5 want: 1.0.4
+91 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-linuxmusl-arm64@1.0.4 OK for: @img/sharp-linuxmusl-arm64@0.33.5 want: 1.0.4
+92 silly placeDep node_modules/@anthropic-ai/claude-code @img/sharp-libvips-linuxmusl-x64@1.0.4 OK for: @img/sharp-linuxmusl-x64@0.33.5 want: 1.0.4
+93 silly reify mark retired [
+93 silly reify   '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/claude-code',
+93 silly reify   '/Users/invictus/.npm-global/bin/claude'
+93 silly reify ]
+94 silly reify moves {
+94 silly reify   '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/claude-code': '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/.claude-code-kUqEwSRZ',
+94 silly reify   '/Users/invictus/.npm-global/bin/claude': '/Users/invictus/.npm-global/bin/.claude-7vgqYOsV'
+94 silly reify }
+95 verbose stack Error: ENOTEMPTY: directory not empty, rename '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/claude-code' -> '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/.claude-code-kUqEwSRZ'
+95 verbose stack     at async Object.rename (node:internal/fs/promises:782:10)
+95 verbose stack     at async moveFile (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/node_modules/@npmcli/fs/lib/move-file.js:30:5)
+95 verbose stack     at async Promise.allSettled (index 0)
+95 verbose stack     at async [reifyPackages] (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/reify.js:325:11)
+95 verbose stack     at async Arborist.reify (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/reify.js:142:5)
+95 verbose stack     at async Install.exec (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/commands/install.js:150:5)
+95 verbose stack     at async Npm.exec (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/npm.js:207:9)
+95 verbose stack     at async module.exports (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/cli/entry.js:74:5)
+96 error code ENOTEMPTY
+97 error syscall rename
+98 error path /Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/claude-code
+99 error dest /Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/.claude-code-kUqEwSRZ
+100 error errno -66
+101 error ENOTEMPTY: directory not empty, rename '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/claude-code' -> '/Users/invictus/.npm-global/lib/node_modules/@anthropic-ai/.claude-code-kUqEwSRZ'
+102 silly unfinished npm timer reify 1770567781963
+103 silly unfinished npm timer reify:retireShallow 1770567782302
+104 verbose cwd /Users/invictus/Desktop/droidproxy/api
+105 verbose os Darwin 24.5.0
+106 verbose node v20.19.3
+107 verbose npm  v10.8.2
+108 verbose exit -66
+109 verbose code -66
+110 error A complete log of this run can be found in: /Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T16_23_01_876Z-debug-0.log

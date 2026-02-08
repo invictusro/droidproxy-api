@@ -82,7 +82,7 @@ func CreatePhone(c *gin.Context) {
 	}
 
 	// Generate QR code data with phone ID (for scanning)
-	apiBaseURL := fmt.Sprintf("http://%s:%s", config.AppConfig.DBHost, config.AppConfig.Port)
+	apiBaseURL := config.AppConfig.APIBaseURL
 	qrData, _ := services.GetQRCodeDataString(apiBaseURL, phone.ID.String(), phone.PairingCode)
 
 	c.JSON(http.StatusCreated, models.PhoneWithPairingCode{
@@ -251,14 +251,12 @@ func PairPhone(c *gin.Context) {
 	// Generate Centrifugo token for this phone
 	centrifugoToken, _ := services.GenerateClientToken(phone.ID.String(), "phone:"+phone.ID.String())
 
-	apiBaseURL := fmt.Sprintf("http://%s:%s", config.AppConfig.DBHost, config.AppConfig.Port)
-
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
 		WireGuardConfig: wireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoURL,
 		CentrifugoToken: centrifugoToken,
-		APIBaseURL:      apiBaseURL,
+		APIBaseURL:      config.AppConfig.APIBaseURL,
 	})
 }
 
@@ -394,14 +392,12 @@ func PhoneLogin(c *gin.Context) {
 	// Generate Centrifugo token for this phone
 	centrifugoToken, _ := services.GenerateClientToken(phone.ID.String(), "phone:"+phone.ID.String())
 
-	apiBaseURL := fmt.Sprintf("http://%s:%s", config.AppConfig.DBHost, config.AppConfig.Port)
-
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
 		WireGuardConfig: wireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoURL,
 		CentrifugoToken: centrifugoToken,
-		APIBaseURL:      apiBaseURL,
+		APIBaseURL:      config.AppConfig.APIBaseURL,
 	})
 }
 

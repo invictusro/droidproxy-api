@@ -32,6 +32,7 @@ type Config struct {
 	Port        string `mapstructure:"PORT"`
 	Env         string `mapstructure:"ENV"`
 	FrontendURL string `mapstructure:"FRONTEND_URL"`
+	APIBaseURL  string `mapstructure:"API_BASE_URL"` // Public API URL (e.g., https://api.alobot.io)
 }
 
 var AppConfig *Config
@@ -50,6 +51,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("ENV", "development")
 	viper.SetDefault("FRONTEND_URL", "http://localhost:5173")
 	viper.SetDefault("CENTRIFUGO_URL", "http://localhost:8000")
+	viper.SetDefault("API_BASE_URL", "http://localhost:8080")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
