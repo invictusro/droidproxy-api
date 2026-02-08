@@ -314,9 +314,23 @@ func Heartbeat(c *gin.Context) {
 		return
 	}
 
+	// Extract Bearer token from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid Authorization header"})
+		return
+	}
+	token := authHeader[7:]
+
 	var phone models.Phone
 	if err := database.DB.First(&phone, "id = ?", phoneID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	// Verify token matches
+	if phone.APIToken != token {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return
 	}
 
@@ -326,6 +340,8 @@ func Heartbeat(c *gin.Context) {
 	phone.CurrentIP = req.CurrentIP
 	if req.Status == "online" {
 		phone.Status = models.StatusOnline
+	} else {
+		phone.Status = models.StatusOffline
 	}
 	database.DB.Save(&phone)
 
