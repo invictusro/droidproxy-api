@@ -29,6 +29,15 @@ func Setup(cfg *config.Config) *gin.Engine {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Debug config (temporary)
+	r.GET("/debug/config", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"api_base_url": cfg.APIBaseURL,
+			"db_host":      cfg.DBHost,
+			"port":         cfg.Port,
+		})
+	})
+
 	// Auth routes (no auth required)
 	auth := r.Group("/auth")
 	{
