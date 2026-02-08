@@ -63,7 +63,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("ENV", "development")
 	viper.SetDefault("FRONTEND_URL", "http://localhost:5173")
 	viper.SetDefault("CENTRIFUGO_URL", "http://localhost:8000")
-	viper.SetDefault("API_BASE_URL", "http://localhost:8080")
+	viper.SetDefault("API_BASE_URL", "https://api.alobot.io")
 
 	// Only try to read .env file if it exists
 	if _, err := os.Stat(".env"); err == nil {
@@ -97,6 +97,16 @@ func Load() (*Config, error) {
 	}
 
 	AppConfig = config
+
+	// Log config values at startup (non-sensitive only)
+	log.Printf("=== API Configuration ===")
+	log.Printf("ENV: %s", config.Env)
+	log.Printf("PORT: %s", config.Port)
+	log.Printf("API_BASE_URL: %s", config.APIBaseURL)
+	log.Printf("FRONTEND_URL: %s", config.FrontendURL)
+	log.Printf("DB_HOST: %s", config.DBHost)
+	log.Printf("=========================")
+
 	return config, nil
 }
 
