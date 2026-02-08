@@ -38,12 +38,6 @@ type Config struct {
 var AppConfig *Config
 
 func Load() (*Config, error) {
-	// Check if .env file exists, if not copy from .env.example
-	if _, err := os.Stat(".env"); os.IsNotExist(err) {
-		log.Println("No .env file found, using environment variables")
-	}
-
-	viper.SetConfigFile(".env")
 	viper.AutomaticEnv()
 
 	// Set defaults
@@ -53,11 +47,16 @@ func Load() (*Config, error) {
 	viper.SetDefault("CENTRIFUGO_URL", "http://localhost:8000")
 	viper.SetDefault("API_BASE_URL", "http://localhost:8080")
 
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
+	// Only try to read .env file if it exists
+	if _, err := os.Stat(".env"); err == nil {
+		viper.SetConfigFile(".env")
+		if err := viper.ReadInConfig(); err != nil {
+			log.Printf("Warning: Error reading .env file: %v", err)
+		} else {
+			log.Println("Loaded configuration from .env file")
 		}
-		// Config file not found, continue with env vars
+	} else {
+		log.Println("No .env file found, using environment variables")
 	}
 
 	config := &Config{}
