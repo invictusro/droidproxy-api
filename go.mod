@@ -1,6 +1,6 @@
 module github.com/droidproxy/api
 
-go 1.25.5
+go 1.23.0
 
 require (
 	github.com/centrifugal/gocent/v3 v3.4.0
@@ -11,6 +11,7 @@ require (
 	github.com/markbates/goth v1.82.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/viper v1.21.0
+	golang.org/x/crypto v0.40.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 )
@@ -60,7 +61,6 @@ require (
 	go.uber.org/mock v0.5.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.20.0 // indirect
-	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/mod v0.26.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
