@@ -1,0 +1,16 @@
+0 verbose cli /opt/homebrew/Cellar/node@20/20.19.3/bin/node /opt/homebrew/bin/npm
+1 info using npm@10.8.2
+2 info using node@v20.19.3
+3 silly config load:file:/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/invictus/.npmrc
+5 silly config load:file:/Users/invictus/.npm-global/etc/npmrc
+6 verbose title npm config get prefix
+7 verbose argv "--global" "config" "get" "prefix"
+8 verbose logfile logs-max:10 dir:/Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T22_16_03_260Z-
+9 verbose logfile /Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T22_16_03_260Z-debug-0.log
+10 verbose cwd /Users/invictus/Desktop/droidproxy/api
+11 verbose os Darwin 24.5.0
+12 verbose node v20.19.3
+13 verbose npm  v10.8.2
+14 verbose exit 0
+15 info ok

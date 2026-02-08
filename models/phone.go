@@ -158,6 +158,8 @@ type PairingResponse struct {
 	CentrifugoURL   string `json:"centrifugo_url"`
 	CentrifugoToken string `json:"centrifugo_token"`
 	APIBaseURL      string `json:"api_base_url"`
+	ServerIP        string `json:"server_ip"`   // VPS IP for proxy connection
+	ProxyPort       int    `json:"proxy_port"`  // Phone's assigned proxy port
 }
 
 // ProxyConfigResponse contains proxy configuration for the phone

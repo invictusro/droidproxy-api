@@ -282,6 +282,12 @@ func PairPhone(c *gin.Context) {
 	// Generate Centrifugo token for this phone
 	centrifugoToken, _ := services.GenerateClientToken(phone.ID.String(), "phone:"+phone.ID.String())
 
+	// Get server IP for proxy connection
+	serverIP := ""
+	if phone.Server != nil {
+		serverIP = phone.Server.IP
+	}
+
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
 		APIToken:        apiToken,
@@ -289,6 +295,8 @@ func PairPhone(c *gin.Context) {
 		CentrifugoURL:   config.AppConfig.CentrifugoURL,
 		CentrifugoToken: centrifugoToken,
 		APIBaseURL:      config.AppConfig.APIBaseURL,
+		ServerIP:        serverIP,
+		ProxyPort:       phone.ProxyPort,
 	})
 }
 
@@ -464,6 +472,12 @@ func PhoneLogin(c *gin.Context) {
 	// Generate Centrifugo token for this phone
 	centrifugoToken, _ := services.GenerateClientToken(phone.ID.String(), "phone:"+phone.ID.String())
 
+	// Get server IP for proxy connection
+	serverIP := ""
+	if phone.Server != nil {
+		serverIP = phone.Server.IP
+	}
+
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
 		APIToken:        apiToken,
@@ -471,6 +485,8 @@ func PhoneLogin(c *gin.Context) {
 		CentrifugoURL:   config.AppConfig.CentrifugoURL,
 		CentrifugoToken: centrifugoToken,
 		APIBaseURL:      config.AppConfig.APIBaseURL,
+		ServerIP:        serverIP,
+		ProxyPort:       phone.ProxyPort,
 	})
 }
 
