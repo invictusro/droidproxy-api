@@ -40,6 +40,24 @@ var AppConfig *Config
 func Load() (*Config, error) {
 	viper.AutomaticEnv()
 
+	// Explicitly bind environment variables
+	viper.BindEnv("DB_HOST")
+	viper.BindEnv("DB_PORT")
+	viper.BindEnv("DB_USER")
+	viper.BindEnv("DB_PASSWORD")
+	viper.BindEnv("DB_NAME")
+	viper.BindEnv("GOOGLE_CLIENT_ID")
+	viper.BindEnv("GOOGLE_CLIENT_SECRET")
+	viper.BindEnv("GOOGLE_CALLBACK_URL")
+	viper.BindEnv("JWT_SECRET")
+	viper.BindEnv("CENTRIFUGO_URL")
+	viper.BindEnv("CENTRIFUGO_API_KEY")
+	viper.BindEnv("CENTRIFUGO_TOKEN_SECRET")
+	viper.BindEnv("PORT")
+	viper.BindEnv("ENV")
+	viper.BindEnv("FRONTEND_URL")
+	viper.BindEnv("API_BASE_URL")
+
 	// Set defaults
 	viper.SetDefault("PORT", "8080")
 	viper.SetDefault("ENV", "development")
@@ -59,9 +77,23 @@ func Load() (*Config, error) {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	config := &Config{}
-	if err := viper.Unmarshal(config); err != nil {
-		return nil, err
+	config := &Config{
+		DBHost:                viper.GetString("DB_HOST"),
+		DBPort:                viper.GetString("DB_PORT"),
+		DBUser:                viper.GetString("DB_USER"),
+		DBPassword:            viper.GetString("DB_PASSWORD"),
+		DBName:                viper.GetString("DB_NAME"),
+		GoogleClientID:        viper.GetString("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:    viper.GetString("GOOGLE_CLIENT_SECRET"),
+		GoogleCallbackURL:     viper.GetString("GOOGLE_CALLBACK_URL"),
+		JWTSecret:             viper.GetString("JWT_SECRET"),
+		CentrifugoURL:         viper.GetString("CENTRIFUGO_URL"),
+		CentrifugoAPIKey:      viper.GetString("CENTRIFUGO_API_KEY"),
+		CentrifugoTokenSecret: viper.GetString("CENTRIFUGO_TOKEN_SECRET"),
+		Port:                  viper.GetString("PORT"),
+		Env:                   viper.GetString("ENV"),
+		FrontendURL:           viper.GetString("FRONTEND_URL"),
+		APIBaseURL:            viper.GetString("API_BASE_URL"),
 	}
 
 	AppConfig = config
