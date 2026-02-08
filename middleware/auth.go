@@ -96,3 +96,71 @@ func GetCurrentUserID(c *gin.Context) uuid.UUID {
 	}
 	return userID.(uuid.UUID)
 }
+
+// PhoneAuthRequired middleware validates phone API tokens
+// Phones must provide X-Phone-ID and X-Phone-Token headers
+func PhoneAuthRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		phoneID := c.GetHeader("X-Phone-ID")
+		phoneToken := c.GetHeader("X-Phone-Token")
+
+		if phoneID == "" || phoneToken == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone authentication required"})
+			c.Abort()
+			return
+		}
+
+		// Validate phone ID format
+		parsedPhoneID, err := uuid.Parse(phoneID)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone ID"})
+			c.Abort()
+			return
+		}
+
+		// Find phone and validate token
+		var phone models.Phone
+		if err := database.DB.Preload("Server").First(&phone, "id = ?", parsedPhoneID).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone not found"})
+			c.Abort()
+			return
+		}
+
+		// Verify the phone is paired
+		if phone.PairedAt == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone not paired"})
+			c.Abort()
+			return
+		}
+
+		// Constant-time comparison to prevent timing attacks
+		if phone.APIToken == "" || phone.APIToken != phoneToken {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone token"})
+			c.Abort()
+			return
+		}
+
+		// Store phone in context
+		c.Set("phone", &phone)
+		c.Set("phoneID", phone.ID)
+		c.Next()
+	}
+}
+
+// GetCurrentPhone retrieves the authenticated phone from context
+func GetCurrentPhone(c *gin.Context) *models.Phone {
+	phone, exists := c.Get("phone")
+	if !exists {
+		return nil
+	}
+	return phone.(*models.Phone)
+}
+
+// GetCurrentPhoneID retrieves the authenticated phone ID from context
+func GetCurrentPhoneID(c *gin.Context) uuid.UUID {
+	phoneID, exists := c.Get("phoneID")
+	if !exists {
+		return uuid.Nil
+	}
+	return phoneID.(uuid.UUID)
+}

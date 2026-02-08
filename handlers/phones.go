@@ -241,10 +241,14 @@ func PairPhone(c *gin.Context) {
 	// Generate WireGuard config for this phone
 	wireGuardConfig := generateWireGuardConfig(&phone)
 
+	// Generate API token for secure phone authentication
+	apiToken := models.GenerateAPIToken()
+
 	// Update phone as paired
 	now := time.Now()
 	phone.PairedAt = &now
 	phone.WireGuardConfig = wireGuardConfig
+	phone.APIToken = apiToken
 	phone.Status = models.StatusOffline
 	database.DB.Save(&phone)
 
@@ -253,6 +257,7 @@ func PairPhone(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
+		APIToken:        apiToken,
 		WireGuardConfig: wireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoURL,
 		CentrifugoToken: centrifugoToken,
@@ -382,10 +387,14 @@ func PhoneLogin(c *gin.Context) {
 	// Generate WireGuard config for this phone
 	wireGuardConfig := generateWireGuardConfig(&phone)
 
+	// Generate API token for secure phone authentication
+	apiToken := models.GenerateAPIToken()
+
 	// Update phone as paired
 	now := time.Now()
 	phone.PairedAt = &now
 	phone.WireGuardConfig = wireGuardConfig
+	phone.APIToken = apiToken
 	phone.Status = models.StatusOffline
 	database.DB.Save(&phone)
 
@@ -394,10 +403,54 @@ func PhoneLogin(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
+		APIToken:        apiToken,
 		WireGuardConfig: wireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoURL,
 		CentrifugoToken: centrifugoToken,
 		APIBaseURL:      config.AppConfig.APIBaseURL,
+	})
+}
+
+// GetProxyConfig returns the proxy configuration for an authenticated phone
+// This endpoint is secured with phone token authentication
+func GetProxyConfig(c *gin.Context) {
+	phone := middleware.GetCurrentPhone(c)
+	if phone == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone not authenticated"})
+		return
+	}
+
+	// Ensure server is loaded
+	if phone.Server == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No server assigned to phone"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.ProxyConfigResponse{
+		PhoneID:         phone.ID.String(),
+		ServerIP:        phone.Server.IP,
+		ProxyPort:       phone.ProxyPort,
+		WireGuardConfig: phone.WireGuardConfig,
+		Status:          string(phone.Status),
+	})
+}
+
+// RefreshPhoneToken generates a new API token for the phone (requires current valid token)
+func RefreshPhoneToken(c *gin.Context) {
+	phone := middleware.GetCurrentPhone(c)
+	if phone == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone not authenticated"})
+		return
+	}
+
+	// Generate new token
+	newToken := models.GenerateAPIToken()
+	phone.APIToken = newToken
+	database.DB.Save(&phone)
+
+	c.JSON(http.StatusOK, gin.H{
+		"api_token": newToken,
+		"message":   "Token refreshed successfully",
 	})
 }
 

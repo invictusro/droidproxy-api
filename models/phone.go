@@ -24,7 +24,8 @@ type Phone struct {
 	ServerID        *uuid.UUID  `gorm:"type:uuid" json:"server_id"`
 	Name            string      `gorm:"not null" json:"name"`
 	PairingCode     string      `gorm:"uniqueIndex" json:"-"`
-	PairingPIN      string      `json:"-"` // 6-digit PIN for QR pairing
+	PairingPIN      string      `json:"-"` // 4-digit PIN for QR pairing
+	APIToken        string      `gorm:"uniqueIndex" json:"-"` // Secure token for phone API auth
 	PairedAt        *time.Time  `json:"paired_at"`
 	ProxyPort       int         `json:"proxy_port"`
 	WireGuardConfig string      `json:"-"` // Sensitive, only returned during pairing
@@ -63,6 +64,13 @@ func generatePairingPIN() string {
 	rand.Read(bytes)
 	pin := (int(bytes[0])<<8 | int(bytes[1])) % 10000
 	return fmt.Sprintf("%04d", pin)
+}
+
+// GenerateAPIToken creates a secure 64-character token for phone API authentication
+func GenerateAPIToken() string {
+	bytes := make([]byte, 32)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
 }
 
 // PhoneResponse is the public representation
@@ -134,10 +142,20 @@ type PhoneLoginInfo struct {
 // PairingResponse is sent back to the Android app
 type PairingResponse struct {
 	PhoneID         string `json:"phone_id"`
+	APIToken        string `json:"api_token"` // Secure token for phone API authentication
 	WireGuardConfig string `json:"wireguard_config"`
 	CentrifugoURL   string `json:"centrifugo_url"`
 	CentrifugoToken string `json:"centrifugo_token"`
 	APIBaseURL      string `json:"api_base_url"`
+}
+
+// ProxyConfigResponse contains proxy configuration for the phone
+type ProxyConfigResponse struct {
+	PhoneID         string `json:"phone_id"`
+	ServerIP        string `json:"server_ip"`
+	ProxyPort       int    `json:"proxy_port"`
+	WireGuardConfig string `json:"wireguard_config"`
+	Status          string `json:"status"`
 }
 
 // HeartbeatRequest is sent periodically from the Android app

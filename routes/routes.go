@@ -19,7 +19,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{cfg.FrontendURL, "http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Phone-ID", "X-Phone-Token"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -39,10 +39,19 @@ func Setup(cfg *config.Config) *gin.Engine {
 	}
 
 	// Phone pairing routes (no auth required - uses pairing code/credentials)
-	r.POST("/api/pair", handlers.PairPhone)               // QR + PIN method
+	r.POST("/api/pair", handlers.PairPhone)                        // QR + PIN method
 	r.GET("/api/phones/available", handlers.GetUserPhonesForLogin) // Get unpaired phones for login
-	r.POST("/api/phone-login", handlers.PhoneLogin)       // Email/password method
+	r.POST("/api/phone-login", handlers.PhoneLogin)                // Email/password method
 	r.POST("/api/heartbeat", handlers.Heartbeat)
+
+	// Phone-authenticated routes (requires X-Phone-ID and X-Phone-Token headers)
+	// These endpoints are exclusively for paired phones
+	phoneAPI := r.Group("/api/phone")
+	phoneAPI.Use(middleware.PhoneAuthRequired())
+	{
+		phoneAPI.GET("/config", handlers.GetProxyConfig)      // Get proxy configuration
+		phoneAPI.POST("/refresh-token", handlers.RefreshPhoneToken) // Refresh API token
+	}
 
 	// Protected API routes
 	api := r.Group("/api")
