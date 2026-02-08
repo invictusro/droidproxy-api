@@ -214,6 +214,8 @@ func GetPhoneStats(c *gin.Context) {
 }
 
 // PairPhone handles pairing request from Android app (QR + PIN method)
+// Security: The phone's public key is encrypted with a key derived from the PIN,
+// preventing MITM attacks from injecting their own key.
 func PairPhone(c *gin.Context) {
 	var req models.PairingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -227,7 +229,13 @@ func PairPhone(c *gin.Context) {
 		return
 	}
 
-	// Verify PIN
+	// Verify PIN format (must be 4 digits)
+	if len(req.PairingPIN) != 4 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid PIN format"})
+		return
+	}
+
+	// Verify PIN matches
 	if phone.PairingPIN != req.PairingPIN {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid PIN"})
 		return
@@ -238,17 +246,36 @@ func PairPhone(c *gin.Context) {
 		return
 	}
 
+	// Decrypt the phone's public key using PIN-derived key
+	// This ensures MITM cannot inject their own key without knowing the PIN
+	publicKeyPEM, err := services.DecryptPublicKey(req.EncryptedPublicKey, req.PairingPIN, req.PairingCode)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to decrypt public key - invalid PIN or corrupted data"})
+		return
+	}
+
+	// Validate the public key format
+	if _, err := services.ValidatePublicKey(publicKeyPEM); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid public key format"})
+		return
+	}
+
 	// Generate WireGuard config for this phone
 	wireGuardConfig := generateWireGuardConfig(&phone)
 
 	// Generate API token for secure phone authentication
 	apiToken := models.GenerateAPIToken()
 
+	// Hash the device fingerprint for storage (we don't need the raw value)
+	fingerprintHash := services.HashDeviceFingerprint(req.DeviceFingerprint)
+
 	// Update phone as paired
 	now := time.Now()
 	phone.PairedAt = &now
 	phone.WireGuardConfig = wireGuardConfig
 	phone.APIToken = apiToken
+	phone.PublicKey = publicKeyPEM
+	phone.DeviceFingerprint = fingerprintHash
 	phone.Status = models.StatusOffline
 	database.DB.Save(&phone)
 
@@ -330,10 +357,11 @@ func GetUserPhonesForLogin(c *gin.Context) {
 			serverName = p.Server.Name
 		}
 		phoneInfos[i] = models.PhoneLoginInfo{
-			ID:         p.ID.String(),
-			Name:       p.Name,
-			Status:     string(p.Status),
-			ServerName: serverName,
+			ID:          p.ID.String(),
+			Name:        p.Name,
+			Status:      string(p.Status),
+			ServerName:  serverName,
+			PairingCode: p.PairingCode, // Needed for client-side key derivation
 		}
 	}
 
@@ -341,6 +369,9 @@ func GetUserPhonesForLogin(c *gin.Context) {
 }
 
 // PhoneLogin handles login from Android app using email/password
+// Security: The phone's public key is encrypted with a key derived from PIN + pairing_code,
+// preventing MITM attacks from injecting their own key.
+// The PIN is displayed on the dashboard and must be entered on the phone.
 func PhoneLogin(c *gin.Context) {
 	var req models.PhoneLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -384,17 +415,49 @@ func PhoneLogin(c *gin.Context) {
 		return
 	}
 
+	// Verify PIN format (must be 4 digits)
+	if len(req.PairingPIN) != 4 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid PIN format"})
+		return
+	}
+
+	// Verify PIN matches the phone's PIN (displayed on dashboard)
+	if phone.PairingPIN != req.PairingPIN {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid PIN"})
+		return
+	}
+
+	// Decrypt the phone's public key using PIN-derived key
+	// Same derivation as QR flow: PIN + pairing_code
+	// This ensures MITM cannot inject their own key without knowing the PIN
+	publicKeyPEM, err := services.DecryptPublicKey(req.EncryptedPublicKey, req.PairingPIN, phone.PairingCode)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to decrypt public key - invalid PIN or corrupted data"})
+		return
+	}
+
+	// Validate the public key format
+	if _, err := services.ValidatePublicKey(publicKeyPEM); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid public key format"})
+		return
+	}
+
 	// Generate WireGuard config for this phone
 	wireGuardConfig := generateWireGuardConfig(&phone)
 
 	// Generate API token for secure phone authentication
 	apiToken := models.GenerateAPIToken()
 
+	// Hash the device fingerprint for storage
+	fingerprintHash := services.HashDeviceFingerprint(req.DeviceFingerprint)
+
 	// Update phone as paired
 	now := time.Now()
 	phone.PairedAt = &now
 	phone.WireGuardConfig = wireGuardConfig
 	phone.APIToken = apiToken
+	phone.PublicKey = publicKeyPEM
+	phone.DeviceFingerprint = fingerprintHash
 	phone.Status = models.StatusOffline
 	database.DB.Save(&phone)
 

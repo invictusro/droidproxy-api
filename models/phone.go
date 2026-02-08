@@ -26,7 +26,9 @@ type Phone struct {
 	PairingCode     string      `gorm:"uniqueIndex" json:"-"`
 	PairingPIN      string      `json:"-"` // 4-digit PIN for QR pairing
 	APIToken        string      `gorm:"uniqueIndex" json:"-"` // Secure token for phone API auth
-	PairedAt        *time.Time  `json:"paired_at"`
+	PublicKey         string      `json:"-"` // Phone's ECDSA public key (PEM format) for request signing
+	DeviceFingerprint string      `json:"-"` // Hardware fingerprint for device binding
+	PairedAt          *time.Time  `json:"paired_at"`
 	ProxyPort       int         `json:"proxy_port"`
 	WireGuardConfig string      `json:"-"` // Sensitive, only returned during pairing
 	Status          PhoneStatus `gorm:"default:pending" json:"status"`
@@ -113,17 +115,23 @@ func (p *Phone) ToResponse() PhoneResponse {
 
 // PairingRequest is sent from the Android app (QR code + PIN method)
 type PairingRequest struct {
-	PairingCode string `json:"pairing_code" binding:"required"`
-	PairingPIN  string `json:"pairing_pin" binding:"required"`
-	DeviceInfo  string `json:"device_info"`
+	PairingCode        string `json:"pairing_code" binding:"required"`
+	PairingPIN         string `json:"pairing_pin" binding:"required"`
+	EncryptedPublicKey string `json:"encrypted_public_key" binding:"required"` // AES-GCM encrypted with PIN-derived key
+	DeviceFingerprint  string `json:"device_fingerprint" binding:"required"`   // Hardware fingerprint for device binding
+	DeviceInfo         string `json:"device_info"`
 }
 
 // PhoneLoginRequest is sent from Android app (email/password method)
+// Note: PIN is required for both auth methods to ensure MITM protection
 type PhoneLoginRequest struct {
-	Email      string `json:"email" binding:"required,email"`
-	Password   string `json:"password" binding:"required"`
-	PhoneID    string `json:"phone_id" binding:"required"` // Select which phone to connect
-	DeviceInfo string `json:"device_info"`
+	Email              string `json:"email" binding:"required,email"`
+	Password           string `json:"password" binding:"required"`
+	PhoneID            string `json:"phone_id" binding:"required"`            // Select which phone to connect
+	PairingPIN         string `json:"pairing_pin" binding:"required"`         // PIN displayed on dashboard (required for key encryption)
+	EncryptedPublicKey string `json:"encrypted_public_key" binding:"required"` // AES-GCM encrypted with PIN-derived key
+	DeviceFingerprint  string `json:"device_fingerprint" binding:"required"`
+	DeviceInfo         string `json:"device_info"`
 }
 
 // PhoneListForLoginResponse is returned when listing phones for login
@@ -133,10 +141,11 @@ type PhoneListForLoginResponse struct {
 
 // PhoneLoginInfo is minimal phone info for login selection
 type PhoneLoginInfo struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	ServerName string `json:"server_name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	ServerName  string `json:"server_name"`
+	PairingCode string `json:"pairing_code"` // Needed for key derivation on client
 }
 
 // PairingResponse is sent back to the Android app

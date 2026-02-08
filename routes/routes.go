@@ -19,7 +19,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{cfg.FrontendURL, "http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Phone-ID", "X-Phone-Token"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Phone-ID", "X-Phone-Token", "X-Signature", "X-Timestamp"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -49,8 +49,16 @@ func Setup(cfg *config.Config) *gin.Engine {
 	phoneAPI := r.Group("/api/phone")
 	phoneAPI.Use(middleware.PhoneAuthRequired())
 	{
-		phoneAPI.GET("/config", handlers.GetProxyConfig)      // Get proxy configuration
-		phoneAPI.POST("/refresh-token", handlers.RefreshPhoneToken) // Refresh API token
+		// Read-only endpoints - token auth is sufficient
+		phoneAPI.GET("/config", handlers.GetProxyConfig)
+
+		// Sensitive write operations - require signature verification
+		// This prevents token theft from being used without the private key
+		signedPhoneAPI := phoneAPI.Group("")
+		signedPhoneAPI.Use(middleware.SignatureRequired())
+		{
+			signedPhoneAPI.POST("/refresh-token", handlers.RefreshPhoneToken)
+		}
 	}
 
 	// Protected API routes
