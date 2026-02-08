@@ -1,0 +1,21 @@
+# Environment files (use Coolify env vars in production)
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+/tmp
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
