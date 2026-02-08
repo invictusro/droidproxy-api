@@ -30,8 +30,10 @@ type Phone struct {
 	DeviceFingerprint string      `json:"-"` // Hardware fingerprint for device binding
 	PairedAt          *time.Time  `json:"paired_at"`
 	ProxyPort       int         `json:"proxy_port"`
-	WireGuardConfig string      `json:"-"` // Sensitive, only returned during pairing
-	Status          PhoneStatus `gorm:"default:pending" json:"status"`
+	WireGuardConfig    string      `json:"-"` // Sensitive, only returned during pairing
+	WireGuardPrivateKey string     `json:"-"` // Phone's WireGuard private key
+	WireGuardPublicKey  string     `json:"-"` // Phone's WireGuard public key
+	Status             PhoneStatus `gorm:"default:pending" json:"status"`
 	LastSeen        *time.Time  `json:"last_seen"`
 	CurrentIP       string      `json:"current_ip"`
 	CreatedAt       time.Time   `json:"created_at"`

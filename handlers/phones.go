@@ -542,17 +542,35 @@ func generateWireGuardConfig(phone *models.Phone) string {
 		return ""
 	}
 
-	// This is a simplified config generator
-	// In production, you'd integrate with the VPS provisioning API
+	// Generate WireGuard keypair for this phone
+	keyPair, err := services.GenerateWireGuardKeyPair()
+	if err != nil {
+		return ""
+	}
+
+	// Store the keys on the phone record
+	phone.WireGuardPrivateKey = keyPair.PrivateKey
+	phone.WireGuardPublicKey = keyPair.PublicKey
+
+	// Get server's WireGuard public key (should be stored on server record)
+	serverPublicKey := phone.Server.WireGuardPublicKey
+	if serverPublicKey == "" {
+		// Fallback: use a placeholder if server key not set
+		serverPublicKey = "SERVER_KEY_NOT_CONFIGURED"
+	}
+
+	// Calculate IP address for this phone (10.66.66.X where X is based on port)
+	ipSuffix := phone.ProxyPort%200 + 10
+
 	return fmt.Sprintf(`[Interface]
-PrivateKey = <GENERATED_PRIVATE_KEY>
+PrivateKey = %s
 Address = 10.66.66.%d/32
 DNS = 1.1.1.1
 
 [Peer]
-PublicKey = <SERVER_PUBLIC_KEY>
+PublicKey = %s
 Endpoint = %s:%d
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
-`, phone.ProxyPort%200+10, phone.Server.IP, phone.Server.WireGuardPort)
+`, keyPair.PrivateKey, ipSuffix, serverPublicKey, phone.Server.IP, phone.Server.WireGuardPort)
 }
