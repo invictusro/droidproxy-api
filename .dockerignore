@@ -1,0 +1,24 @@
+# Environment files - use Coolify env vars
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build artifacts
+tmp/
+*.exe
+
+# Documentation
+README.md
+docs/
+
+# Test files
+*_test.go
