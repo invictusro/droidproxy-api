@@ -15,7 +15,7 @@ type Server struct {
 	WireGuardPort      int    `gorm:"default:51820" json:"-"`
 	WireGuardPublicKey string `json:"-"` // Server's WireGuard public key
 	ProxyPortStart     int    `gorm:"default:10001" json:"-"`
-	ProxyPortEnd   int       `gorm:"default:10100" json:"-"`
+	ProxyPortEnd   int       `gorm:"default:19999" json:"-"`
 	IsActive       bool      `gorm:"default:true" json:"is_active"`
 	CreatedAt      time.Time `json:"created_at"`
 
