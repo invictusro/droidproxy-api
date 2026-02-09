@@ -11,7 +11,6 @@ import (
 	"github.com/droidproxy/api/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // ListCredentials returns all connection credentials for a phone
@@ -89,14 +88,9 @@ func CreateCredential(c *gin.Context) {
 		credential.ProxyType = models.ProxyTypeBoth
 	}
 
-	// Hash password if provided
+	// Store plain password (proxy credentials, not user passwords)
 	if req.Password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-			return
-		}
-		credential.Password = string(hashedPassword)
+		credential.Password = req.Password
 	}
 
 	// Parse expiration date if provided
@@ -172,12 +166,7 @@ func UpdateCredential(c *gin.Context) {
 		credential.Username = *req.Username
 	}
 	if req.Password != nil && *req.Password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-			return
-		}
-		credential.Password = string(hashedPassword)
+		credential.Password = *req.Password
 	}
 	if req.BandwidthLimit != nil {
 		credential.BandwidthLimit = *req.BandwidthLimit

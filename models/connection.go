@@ -70,7 +70,7 @@ type ConnectionCredentialResponse struct {
 	ProxyType      ProxyType  `json:"proxy_type"`
 	AllowedIP      string     `json:"allowed_ip,omitempty"`
 	Username       string     `json:"username,omitempty"`
-	HasPassword    bool       `json:"has_password"`
+	Password       string     `json:"password,omitempty"` // Plain password for proxy auth
 	BandwidthLimit int64      `json:"bandwidth_limit,omitempty"`
 	BandwidthUsed  int64      `json:"bandwidth_used"`
 	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
@@ -88,7 +88,7 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 		ProxyType:      c.ProxyType,
 		AllowedIP:      c.AllowedIP,
 		Username:       c.Username,
-		HasPassword:    c.Password != "",
+		Password:       c.Password,
 		BandwidthLimit: c.BandwidthLimit,
 		BandwidthUsed:  c.BandwidthUsed,
 		ExpiresAt:      c.ExpiresAt,
