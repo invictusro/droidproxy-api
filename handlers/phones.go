@@ -20,6 +20,20 @@ type CreatePhoneRequest struct {
 	ServerID string `json:"server_id" binding:"required"`
 }
 
+// PhoneWithCredential extends PhoneResponse with first credential info
+type PhoneWithCredential struct {
+	models.PhoneResponse
+	FirstCredential *CredentialSummary `json:"first_credential,omitempty"`
+}
+
+// CredentialSummary is a brief credential for display in phone list
+type CredentialSummary struct {
+	AuthType  string `json:"auth_type"`
+	ProxyType string `json:"proxy_type"`
+	Username  string `json:"username,omitempty"`
+	AllowedIP string `json:"allowed_ip,omitempty"`
+}
+
 // ListPhones returns all phones for the current user
 func ListPhones(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
@@ -30,9 +44,23 @@ func ListPhones(c *gin.Context) {
 		return
 	}
 
-	responses := make([]models.PhoneResponse, len(phones))
+	responses := make([]PhoneWithCredential, len(phones))
 	for i, phone := range phones {
-		responses[i] = phone.ToResponse()
+		responses[i] = PhoneWithCredential{
+			PhoneResponse: phone.ToResponse(),
+		}
+
+		// Get first active credential for this phone
+		var firstCred models.ConnectionCredential
+		if err := database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).
+			Order("created_at ASC").First(&firstCred).Error; err == nil {
+			responses[i].FirstCredential = &CredentialSummary{
+				AuthType:  string(firstCred.AuthType),
+				ProxyType: string(firstCred.ProxyType),
+				Username:  firstCred.Username,
+				AllowedIP: firstCred.AllowedIP,
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"phones": responses})
