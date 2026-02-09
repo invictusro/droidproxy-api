@@ -6,9 +6,10 @@ import (
 
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/infra"
+	phonecomm "github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/middleware"
 	"github.com/droidproxy/api/models"
-	"github.com/droidproxy/api/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -108,8 +109,15 @@ func CreateCredential(c *gin.Context) {
 		return
 	}
 
-	// Notify phone to refresh credentials
+	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
+
+	// Update HTTP proxy on server if this credential supports HTTP
+	if credential.ProxyType == models.ProxyTypeHTTP || credential.ProxyType == models.ProxyTypeBoth {
+		// Load server relationship
+		database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+		go updateHTTPProxyCredentials(&phone) // Run async to not block response
+	}
 
 	// Return response with plain password (only on creation)
 	response := models.ConnectionCredentialWithPassword{
@@ -192,8 +200,12 @@ func UpdateCredential(c *gin.Context) {
 		return
 	}
 
-	// Notify phone to refresh credentials
+	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
+
+	// Update HTTP proxy on server
+	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	go updateHTTPProxyCredentials(&phone)
 
 	c.JSON(http.StatusOK, gin.H{"credential": credential.ToResponse()})
 }
@@ -225,8 +237,12 @@ func DeleteCredential(c *gin.Context) {
 		return
 	}
 
-	// Notify phone to refresh credentials
+	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
+
+	// Update HTTP proxy on server
+	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	go updateHTTPProxyCredentials(&phone)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Credential deleted"})
 }
@@ -318,7 +334,7 @@ func RotateIPByToken(c *gin.Context) {
 	database.DB.Save(&token)
 
 	// Send rotate command to phone
-	if err := services.SendRotateIP(token.PhoneID.String()); err != nil {
+	if err := phonecomm.SendRotateIP(token.PhoneID.String()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send rotate command"})
 		return
 	}
@@ -326,7 +342,7 @@ func RotateIPByToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Rotation command sent", "phone_id": token.PhoneID})
 }
 
-// PhoneCredential is the simplified credential sent to phones
+// PhoneCredential is the simplified credential sent to phones (SOCKS5 only)
 type PhoneCredential struct {
 	ID           string `json:"id"`
 	AuthType     string `json:"auth_type"`
@@ -337,16 +353,22 @@ type PhoneCredential struct {
 }
 
 // Helper to notify phone of credential updates with full data
+// Only sends credentials that allow SOCKS5 connections (socks5 or both)
 func notifyPhoneCredentialsUpdated(phoneID string) {
 	// Fetch current credentials for this phone
 	var credentials []models.ConnectionCredential
 	database.DB.Where("phone_id = ? AND is_active = ?", phoneID, true).Find(&credentials)
 
-	// Convert to phone format
+	// Convert to phone format - only SOCKS5-compatible credentials
 	phoneCredentials := make([]PhoneCredential, 0, len(credentials))
 	for _, cred := range credentials {
 		// Skip expired credentials
 		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
+			continue
+		}
+
+		// Only send credentials that allow SOCKS5 (socks5 or both)
+		if cred.ProxyType != models.ProxyTypeSOCKS5 && cred.ProxyType != models.ProxyTypeBoth {
 			continue
 		}
 
@@ -356,12 +378,68 @@ func notifyPhoneCredentialsUpdated(phoneID string) {
 			ProxyType:    string(cred.ProxyType),
 			AllowedIP:    cred.AllowedIP,
 			Username:     cred.Username,
-			PasswordHash: cred.Password, // Already bcrypt hashed
+			PasswordHash: cred.Password,
 		})
 	}
 
-	services.PublishToPhone(phoneID, services.PhoneCommand{
-		Command: "credentials_update",
-		Data:    phoneCredentials,
-	})
+	phonecomm.SendCredentialsUpdate(phoneID, phoneCredentials)
+}
+
+// updateHTTPProxyCredentials updates the HTTP proxy on the server with HTTP-compatible credentials
+func updateHTTPProxyCredentials(phone *models.Phone) error {
+	if phone.ServerID == nil || phone.HTTPPort == 0 {
+		return nil // No server or HTTP port configured
+	}
+
+	// Get server
+	var server models.Server
+	if err := database.DB.First(&server, "id = ?", phone.ServerID).Error; err != nil {
+		return err
+	}
+
+	if server.SSHPassword == "" {
+		return nil // No SSH credentials
+	}
+
+	// Get HTTP-compatible credentials (http or both)
+	var credentials []models.ConnectionCredential
+	database.DB.Where("phone_id = ? AND is_active = ? AND (proxy_type = ? OR proxy_type = ?)",
+		phone.ID, true, models.ProxyTypeHTTP, models.ProxyTypeBoth).Find(&credentials)
+
+	// Filter out expired and build credential list
+	httpCreds := make([]infra.GostCredential, 0, len(credentials))
+	for _, cred := range credentials {
+		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
+			continue
+		}
+		// Only userpass auth works for HTTP proxy
+		if cred.AuthType == models.AuthTypeUserPass && cred.Username != "" && cred.Password != "" {
+			httpCreds = append(httpCreds, infra.GostCredential{
+				Username: cred.Username,
+				Password: cred.Password,
+			})
+		}
+	}
+
+	// Connect to server and update HTTP proxy
+	client := infra.NewSSHClient(server.IP, server.SSHPort, server.SSHUser, server.SSHPassword)
+	if err := client.Connect(); err != nil {
+		return err
+	}
+	defer client.Close()
+
+	proxyManager := infra.NewGostManager(client)
+
+	if len(httpCreds) == 0 {
+		// No HTTP credentials, stop HTTP proxy if running
+		proxyManager.StopProxy(phone.ID.String())
+	} else {
+		// Start/update HTTP proxy with credentials
+		_, err := proxyManager.StartProxyMultiUser(phone.ID.String(), phone.ProxyPort, phone.HTTPPort, httpCreds)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

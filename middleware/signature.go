@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/droidproxy/api/services"
+	phonecomm "github.com/droidproxy/api/internal/phone"
 	"github.com/gin-gonic/gin"
 )
 
@@ -105,7 +105,7 @@ func SignatureRequired() gin.HandlerFunc {
 		)
 
 		// Verify signature
-		valid, err := services.VerifySignature(phone.PublicKey, signedData, signature)
+		valid, err := phonecomm.VerifySignature(phone.PublicKey, signedData, signature)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify signature"})
 			c.Abort()
@@ -193,7 +193,7 @@ func OptionalSignature() gin.HandlerFunc {
 			return
 		}
 
-		valid, err := services.VerifySignature(phone.PublicKey, signedData, signature)
+		valid, err := phonecomm.VerifySignature(phone.PublicKey, signedData, signature)
 		if err != nil || !valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
 			c.Abort()

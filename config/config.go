@@ -24,7 +24,8 @@ type Config struct {
 	JWTSecret string `mapstructure:"JWT_SECRET"`
 
 	// Centrifugo
-	CentrifugoURL         string `mapstructure:"CENTRIFUGO_URL"`
+	CentrifugoURL         string `mapstructure:"CENTRIFUGO_URL"`          // Internal URL for API calls
+	CentrifugoPublicURL   string `mapstructure:"CENTRIFUGO_PUBLIC_URL"`   // Public URL for browser WebSocket
 	CentrifugoAPIKey      string `mapstructure:"CENTRIFUGO_API_KEY"`
 	CentrifugoTokenSecret string `mapstructure:"CENTRIFUGO_TOKEN_SECRET"`
 
@@ -51,6 +52,7 @@ func Load() (*Config, error) {
 	viper.BindEnv("GOOGLE_CALLBACK_URL")
 	viper.BindEnv("JWT_SECRET")
 	viper.BindEnv("CENTRIFUGO_URL")
+	viper.BindEnv("CENTRIFUGO_PUBLIC_URL")
 	viper.BindEnv("CENTRIFUGO_API_KEY")
 	viper.BindEnv("CENTRIFUGO_TOKEN_SECRET")
 	viper.BindEnv("PORT")
@@ -63,6 +65,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("ENV", "development")
 	viper.SetDefault("FRONTEND_URL", "http://localhost:5173")
 	viper.SetDefault("CENTRIFUGO_URL", "http://localhost:8000")
+	viper.SetDefault("CENTRIFUGO_PUBLIC_URL", "") // Falls back to CENTRIFUGO_URL if not set
 	viper.SetDefault("API_BASE_URL", "https://api.alobot.io")
 
 	// Only try to read .env file if it exists
@@ -77,6 +80,12 @@ func Load() (*Config, error) {
 		log.Println("No .env file found, using environment variables")
 	}
 
+	// Get Centrifugo public URL, fallback to internal URL if not set
+	centrifugoPublicURL := viper.GetString("CENTRIFUGO_PUBLIC_URL")
+	if centrifugoPublicURL == "" {
+		centrifugoPublicURL = viper.GetString("CENTRIFUGO_URL")
+	}
+
 	config := &Config{
 		DBHost:                viper.GetString("DB_HOST"),
 		DBPort:                viper.GetString("DB_PORT"),
@@ -88,6 +97,7 @@ func Load() (*Config, error) {
 		GoogleCallbackURL:     viper.GetString("GOOGLE_CALLBACK_URL"),
 		JWTSecret:             viper.GetString("JWT_SECRET"),
 		CentrifugoURL:         viper.GetString("CENTRIFUGO_URL"),
+		CentrifugoPublicURL:   centrifugoPublicURL,
 		CentrifugoAPIKey:      viper.GetString("CENTRIFUGO_API_KEY"),
 		CentrifugoTokenSecret: viper.GetString("CENTRIFUGO_TOKEN_SECRET"),
 		Port:                  viper.GetString("PORT"),

@@ -6,9 +6,9 @@ import (
 
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
+	phonecomm "github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/middleware"
 	"github.com/droidproxy/api/models"
-	"github.com/droidproxy/api/services"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/markbates/goth"
@@ -213,12 +213,12 @@ func GetMe(c *gin.Context) {
 	}
 
 	// Generate Centrifugo token for dashboard real-time updates
-	centrifugoToken, _ := services.GenerateDashboardToken(user.ID.String())
+	centrifugoToken, _ := phonecomm.GenerateUserToken(user.ID.String())
 
 	c.JSON(http.StatusOK, gin.H{
 		"user":             user.ToResponse(),
 		"centrifugo_token": centrifugoToken,
-		"centrifugo_url":   config.AppConfig.CentrifugoURL,
+		"centrifugo_url":   config.AppConfig.CentrifugoPublicURL,
 	})
 }
 

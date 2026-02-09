@@ -19,6 +19,16 @@ type Server struct {
 	IsActive       bool      `gorm:"default:true" json:"is_active"`
 	CreatedAt      time.Time `json:"created_at"`
 
+	// SSH credentials for server management
+	SSHPort     int    `gorm:"default:22" json:"-"`
+	SSHUser     string `gorm:"default:root" json:"-"`
+	SSHPassword string `json:"-"` // Stored encrypted
+	SSHKeyPath  string `json:"-"` // Alternative: path to SSH private key
+
+	// Server status
+	IsSetup     bool      `gorm:"default:false" json:"-"` // Whether server has been set up
+	LastCheckAt *time.Time `json:"-"`                      // Last health check
+
 	// Relationships
 	Phones []Phone `gorm:"foreignKey:ServerID" json:"phones,omitempty"`
 }
@@ -39,18 +49,23 @@ type ServerResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// ServerAdminResponse for admins (includes IP)
+// ServerAdminResponse for admins (includes IP and SSH info)
 type ServerAdminResponse struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	Location       string    `json:"location"`
-	IP             string    `json:"ip"`
-	WireGuardPort  int       `json:"wireguard_port"`
-	ProxyPortStart int       `json:"proxy_port_start"`
-	ProxyPortEnd   int       `json:"proxy_port_end"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	PhoneCount     int       `json:"phone_count"`
+	ID             uuid.UUID  `json:"id"`
+	Name           string     `json:"name"`
+	Location       string     `json:"location"`
+	IP             string     `json:"ip"`
+	WireGuardPort  int        `json:"wireguard_port"`
+	ProxyPortStart int        `json:"proxy_port_start"`
+	ProxyPortEnd   int        `json:"proxy_port_end"`
+	SSHPort        int        `json:"ssh_port"`
+	SSHUser        string     `json:"ssh_user"`
+	HasSSHPassword bool       `json:"has_ssh_password"`
+	IsSetup        bool       `json:"is_setup"`
+	IsActive       bool       `json:"is_active"`
+	LastCheckAt    *time.Time `json:"last_check_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	PhoneCount     int        `json:"phone_count"`
 }
 
 func (s *Server) ToResponse() ServerResponse {
@@ -72,7 +87,12 @@ func (s *Server) ToAdminResponse() ServerAdminResponse {
 		WireGuardPort:  s.WireGuardPort,
 		ProxyPortStart: s.ProxyPortStart,
 		ProxyPortEnd:   s.ProxyPortEnd,
+		SSHPort:        s.SSHPort,
+		SSHUser:        s.SSHUser,
+		HasSSHPassword: s.SSHPassword != "",
+		IsSetup:        s.IsSetup,
 		IsActive:       s.IsActive,
+		LastCheckAt:    s.LastCheckAt,
 		CreatedAt:      s.CreatedAt,
 		PhoneCount:     len(s.Phones),
 	}

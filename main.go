@@ -6,8 +6,8 @@ import (
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
 	"github.com/droidproxy/api/handlers"
+	"github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/routes"
-	"github.com/droidproxy/api/services"
 )
 
 func main() {
@@ -33,8 +33,9 @@ func main() {
 	handlers.InitOAuth(cfg)
 	log.Println("OAuth initialized")
 
-	// Initialize Centrifugo client
-	services.InitCentrifugo(cfg)
+	// Initialize phone communication services
+	phone.InitCommander(cfg.CentrifugoURL, cfg.CentrifugoAPIKey)
+	phone.InitRealtime(cfg.CentrifugoURL, cfg.CentrifugoAPIKey, cfg.CentrifugoTokenSecret)
 
 	// Setup routes
 	router := routes.Setup(cfg)

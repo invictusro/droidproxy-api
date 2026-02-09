@@ -117,6 +117,19 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.PUT("/servers/:id", handlers.UpdateServer)
 			admin.DELETE("/servers/:id", handlers.DeleteServer)
 
+			// Server SSH management
+			admin.POST("/servers/:id/ssh/test", handlers.TestSSHConnection)
+			admin.POST("/servers/:id/ssh/exec", handlers.RunSSHCommand)
+			admin.POST("/servers/:id/setup", handlers.SetupServer)
+
+			// HTTP Proxy management (gost-based HTTP-to-SOCKS5 converter)
+			admin.POST("/servers/:id/http-proxy/start", handlers.StartHTTPProxy)
+			admin.DELETE("/servers/:id/http-proxy/:phone_id", handlers.StopHTTPProxy)
+
+			// Firewall management
+			admin.GET("/servers/:id/firewall", handlers.GetFirewallStatus)
+			admin.POST("/servers/:id/firewall", handlers.ManageFirewall)
+
 			// User management
 			admin.GET("/users", handlers.ListUsers)
 			admin.GET("/users/:id", handlers.GetUser)

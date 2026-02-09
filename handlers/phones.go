@@ -7,9 +7,10 @@ import (
 
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/infra"
+	phonecomm "github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/middleware"
 	"github.com/droidproxy/api/models"
-	"github.com/droidproxy/api/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -88,12 +89,15 @@ func CreatePhone(c *gin.Context) {
 		return
 	}
 
-	// Assign next available port
+	// Assign next available SOCKS5 port
 	proxyPort, err := getNextAvailablePort(&server)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
 		return
 	}
+
+	// Assign HTTP port (offset from SOCKS5 port range)
+	httpPort := proxyPort + 7000
 
 	// Create phone
 	phone := models.Phone{
@@ -101,6 +105,7 @@ func CreatePhone(c *gin.Context) {
 		ServerID:  &serverID,
 		Name:      req.Name,
 		ProxyPort: proxyPort,
+		HTTPPort:  httpPort,
 		Status:    models.StatusPending,
 	}
 
@@ -111,7 +116,7 @@ func CreatePhone(c *gin.Context) {
 
 	// Generate QR code data with phone ID (for scanning)
 	apiBaseURL := config.AppConfig.APIBaseURL
-	qrData, _ := services.GetQRCodeDataString(apiBaseURL, phone.ID.String(), phone.PairingCode)
+	qrData, _ := phonecomm.GetQRCodeDataString(apiBaseURL, phone.ID.String(), phone.PairingCode)
 
 	c.JSON(http.StatusCreated, models.PhoneWithPairingCode{
 		Phone:       phone.ToResponse(),
@@ -175,15 +180,21 @@ func RotateIP(c *gin.Context) {
 		return
 	}
 
+	// Log the attempt
+	fmt.Printf("[RotateIP] Phone %s status: %s\n", phoneID, phone.Status)
+
 	if phone.Status != models.StatusOnline {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone is not online"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Phone is not online (status: %s)", phone.Status)})
 		return
 	}
 
-	if err := services.SendRotateIP(phoneID.String()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send command"})
+	if err := phonecomm.SendRotateIP(phoneID.String()); err != nil {
+		fmt.Printf("[RotateIP] Failed to send command to phone %s: %v\n", phoneID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send command: " + err.Error()})
 		return
 	}
+
+	fmt.Printf("[RotateIP] Command sent successfully to phone %s\n", phoneID)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Rotate IP command sent"})
 }
@@ -204,7 +215,7 @@ func RestartProxy(c *gin.Context) {
 		return
 	}
 
-	if err := services.SendRestartProxy(phoneID.String()); err != nil {
+	if err := phonecomm.SendRestart(phoneID.String()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send command"})
 		return
 	}
@@ -276,14 +287,14 @@ func PairPhone(c *gin.Context) {
 
 	// Decrypt the phone's public key using PIN-derived key
 	// This ensures MITM cannot inject their own key without knowing the PIN
-	publicKeyPEM, err := services.DecryptPublicKey(req.EncryptedPublicKey, req.PairingPIN, req.PairingCode)
+	publicKeyPEM, err := phonecomm.DecryptPublicKey(req.EncryptedPublicKey, req.PairingPIN, req.PairingCode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to decrypt public key - invalid PIN or corrupted data"})
 		return
 	}
 
 	// Validate the public key format
-	if _, err := services.ValidatePublicKey(publicKeyPEM); err != nil {
+	if _, err := phonecomm.ValidatePublicKey(publicKeyPEM); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid public key format"})
 		return
 	}
@@ -295,7 +306,7 @@ func PairPhone(c *gin.Context) {
 	apiToken := models.GenerateAPIToken()
 
 	// Hash the device fingerprint for storage (we don't need the raw value)
-	fingerprintHash := services.HashDeviceFingerprint(req.DeviceFingerprint)
+	fingerprintHash := phonecomm.HashDeviceFingerprint(req.DeviceFingerprint)
 
 	// Update phone as paired
 	now := time.Now()
@@ -308,7 +319,7 @@ func PairPhone(c *gin.Context) {
 	database.DB.Save(&phone)
 
 	// Generate Centrifugo token for this phone
-	centrifugoToken, _ := services.GenerateClientToken(phone.ID.String(), "phone:"+phone.ID.String())
+	centrifugoToken, _ := phonecomm.GeneratePhoneToken(phone.ID.String())
 
 	// Get server IP for proxy connection
 	serverIP := ""
@@ -482,14 +493,14 @@ func PhoneLogin(c *gin.Context) {
 	// Decrypt the phone's public key using PIN-derived key
 	// Same derivation as QR flow: PIN + pairing_code
 	// This ensures MITM cannot inject their own key without knowing the PIN
-	publicKeyPEM, err := services.DecryptPublicKey(req.EncryptedPublicKey, req.PairingPIN, phone.PairingCode)
+	publicKeyPEM, err := phonecomm.DecryptPublicKey(req.EncryptedPublicKey, req.PairingPIN, phone.PairingCode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to decrypt public key - invalid PIN or corrupted data"})
 		return
 	}
 
 	// Validate the public key format
-	if _, err := services.ValidatePublicKey(publicKeyPEM); err != nil {
+	if _, err := phonecomm.ValidatePublicKey(publicKeyPEM); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid public key format"})
 		return
 	}
@@ -501,7 +512,7 @@ func PhoneLogin(c *gin.Context) {
 	apiToken := models.GenerateAPIToken()
 
 	// Hash the device fingerprint for storage
-	fingerprintHash := services.HashDeviceFingerprint(req.DeviceFingerprint)
+	fingerprintHash := phonecomm.HashDeviceFingerprint(req.DeviceFingerprint)
 
 	// Update phone as paired
 	now := time.Now()
@@ -514,7 +525,7 @@ func PhoneLogin(c *gin.Context) {
 	database.DB.Save(&phone)
 
 	// Generate Centrifugo token for this phone
-	centrifugoToken, _ := services.GenerateClientToken(phone.ID.String(), "phone:"+phone.ID.String())
+	centrifugoToken, _ := phonecomm.GeneratePhoneToken(phone.ID.String())
 
 	// Get server IP for proxy connection
 	serverIP := ""
@@ -646,7 +657,7 @@ func generateWireGuardConfig(phone *models.Phone) string {
 	}
 
 	// Generate WireGuard keypair for this phone
-	keyPair, err := services.GenerateWireGuardKeyPair()
+	keyPair, err := infra.GenerateWireGuardKeyPair()
 	if err != nil {
 		return ""
 	}
@@ -662,12 +673,16 @@ func generateWireGuardConfig(phone *models.Phone) string {
 		serverPublicKey = "SERVER_KEY_NOT_CONFIGURED"
 	}
 
-	// Calculate IP address for this phone (10.66.66.X where X is based on port)
-	ipSuffix := phone.ProxyPort%200 + 10
+	// Get next available WireGuard IP from server
+	wireGuardIP := getNextWireGuardIP(phone.Server)
+	phone.WireGuardIP = wireGuardIP
+
+	// Add this phone as a WireGuard peer on the server via SSH
+	go addWireGuardPeerToServer(phone.Server, keyPair.PublicKey, wireGuardIP)
 
 	return fmt.Sprintf(`[Interface]
 PrivateKey = %s
-Address = 10.66.66.%d/32
+Address = %s/16
 DNS = 1.1.1.1
 
 [Peer]
@@ -675,5 +690,59 @@ PublicKey = %s
 Endpoint = %s:%d
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
-`, keyPair.PrivateKey, ipSuffix, serverPublicKey, phone.Server.IP, phone.Server.WireGuardPort)
+`, keyPair.PrivateKey, wireGuardIP, serverPublicKey, phone.Server.IP, phone.Server.WireGuardPort)
+}
+
+// getNextWireGuardIP finds the next available WireGuard IP for a server
+// Uses 10.66.0.0/16 subnet = 65,534 available IPs per server
+func getNextWireGuardIP(server *models.Server) string {
+	// Get all used WireGuard IPs for this server
+	var usedIPs []string
+	database.DB.Model(&models.Phone{}).Where("server_id = ?", server.ID).Pluck("wire_guard_ip", &usedIPs)
+
+	usedSet := make(map[string]bool)
+	for _, ip := range usedIPs {
+		if ip != "" {
+			usedSet[ip] = true
+		}
+	}
+
+	// Find first available IP in 10.66.0.0/16 (server is 10.66.0.1, phones start at 10.66.0.2)
+	// Range: 10.66.0.2 - 10.66.255.254 = 65,533 IPs
+	for third := 0; third <= 255; third++ {
+		startFourth := 2
+		if third > 0 {
+			startFourth = 1 // Only skip .0 and .1 in first octet
+		}
+		for fourth := startFourth; fourth <= 254; fourth++ {
+			ip := fmt.Sprintf("10.66.%d.%d", third, fourth)
+			if !usedSet[ip] {
+				return ip
+			}
+		}
+	}
+
+	// Fallback
+	return "10.66.0.2"
+}
+
+// addWireGuardPeerToServer adds the phone as a WireGuard peer on the server
+func addWireGuardPeerToServer(server *models.Server, publicKey, ip string) {
+	if server.SSHPassword == "" {
+		return // No SSH credentials configured
+	}
+
+	client := infra.NewSSHClient(server.IP, server.SSHPort, server.SSHUser, server.SSHPassword)
+	if err := client.Connect(); err != nil {
+		fmt.Printf("[WireGuard] Failed to connect to server %s: %v\n", server.Name, err)
+		return
+	}
+	defer client.Close()
+
+	wgManager := infra.NewWireGuardManager(client)
+	if err := wgManager.AddPeer(publicKey, ip); err != nil {
+		fmt.Printf("[WireGuard] Failed to add peer %s: %v\n", ip, err)
+	} else {
+		fmt.Printf("[WireGuard] Added peer %s to server %s\n", ip, server.Name)
+	}
 }

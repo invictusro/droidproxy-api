@@ -29,7 +29,9 @@ type Phone struct {
 	PublicKey         string      `json:"-"` // Phone's ECDSA public key (PEM format) for request signing
 	DeviceFingerprint string      `json:"-"` // Hardware fingerprint for device binding
 	PairedAt          *time.Time  `json:"paired_at"`
-	ProxyPort       int         `json:"proxy_port"`
+	ProxyPort       int         `json:"proxy_port"`      // SOCKS5 port
+	HTTPPort        int         `json:"http_port"`       // HTTP proxy port (separate from SOCKS5)
+	WireGuardIP     string      `json:"wireguard_ip"`    // Phone's WireGuard IP (e.g., 10.66.66.2)
 	WireGuardConfig    string      `json:"-"` // Sensitive, only returned during pairing
 	WireGuardPrivateKey string     `json:"-"` // Phone's WireGuard private key
 	WireGuardPublicKey  string     `json:"-"` // Phone's WireGuard public key
@@ -85,8 +87,9 @@ type PhoneResponse struct {
 	CurrentIP  string         `json:"current_ip,omitempty"`
 	LastSeen   *time.Time     `json:"last_seen,omitempty"`
 	PairedAt   *time.Time     `json:"paired_at,omitempty"`
-	ProxyPort  int            `json:"proxy_port,omitempty"`
-	ServerIP   string         `json:"server_ip,omitempty"` // Server IP for proxy connection
+	ProxyPort  int            `json:"proxy_port,omitempty"`  // SOCKS5 port
+	HTTPPort   int            `json:"http_port,omitempty"`   // HTTP proxy port
+	ServerIP   string         `json:"server_ip,omitempty"`   // Server IP for proxy connection
 	Server     ServerResponse `json:"server,omitempty"`
 	CreatedAt  time.Time      `json:"created_at"`
 }
@@ -108,6 +111,7 @@ func (p *Phone) ToResponse() PhoneResponse {
 		LastSeen:  p.LastSeen,
 		PairedAt:  p.PairedAt,
 		ProxyPort: p.ProxyPort,
+		HTTPPort:  p.HTTPPort,
 		CreatedAt: p.CreatedAt,
 	}
 	if p.Server != nil {
