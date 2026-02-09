@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -772,13 +773,21 @@ func getNextAvailablePort(server *models.Server) (int, error) {
 		usedSet[p] = true
 	}
 
+	// Build list of available ports
+	var availablePorts []int
 	for port := server.ProxyPortStart; port <= server.ProxyPortEnd; port++ {
 		if !usedSet[port] {
-			return port, nil
+			availablePorts = append(availablePorts, port)
 		}
 	}
 
-	return 0, fmt.Errorf("no available ports")
+	if len(availablePorts) == 0 {
+		return 0, fmt.Errorf("no available ports")
+	}
+
+	// Pick a random port from available ones
+	randomIndex := rand.Intn(len(availablePorts))
+	return availablePorts[randomIndex], nil
 }
 
 func generateWireGuardConfig(phone *models.Phone) string {
