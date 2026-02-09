@@ -57,6 +57,9 @@ func Setup(cfg *config.Config) *gin.Engine {
 	r.GET("/api/rotate/:token", handlers.RotateIPByToken)
 	r.POST("/api/rotate/:token", handlers.RotateIPByToken)
 
+	// Centrifugo proxy endpoint (updates database when phones publish status)
+	r.POST("/api/centrifugo/publish", handlers.CentrifugoPublishProxy)
+
 
 	// Phone-authenticated routes (requires X-Phone-ID and X-Phone-Token headers)
 	// These endpoints are exclusively for paired phones

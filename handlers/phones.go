@@ -428,6 +428,67 @@ func Heartbeat(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "OK"})
 }
 
+// CentrifugoPublishProxy handles proxied publish events from Centrifugo
+// This updates last_seen and status in the database when phones publish status
+func CentrifugoPublishProxy(c *gin.Context) {
+	var req struct {
+		Channel string `json:"channel"`
+		Data    struct {
+			Type              string `json:"type"`
+			PhoneID           string `json:"phone_id"`
+			Status            string `json:"status"`
+			CurrentIP         string `json:"current_ip"`
+			ActiveConnections int    `json:"active_connections"`
+			TotalConnections  int64  `json:"total_connections"`
+		} `json:"data"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Return empty result to allow publish to proceed
+		c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
+		return
+	}
+
+	// Only process status updates
+	if req.Data.Type != "status" || req.Data.PhoneID == "" {
+		c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
+		return
+	}
+
+	phoneID, err := uuid.Parse(req.Data.PhoneID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
+		return
+	}
+
+	// Update phone in database
+	now := time.Now()
+	updates := map[string]interface{}{
+		"last_seen":  now,
+		"current_ip": req.Data.CurrentIP,
+	}
+	if req.Data.Status == "online" {
+		updates["status"] = models.StatusOnline
+	} else if req.Data.Status == "offline" {
+		updates["status"] = models.StatusOffline
+	}
+
+	database.DB.Model(&models.Phone{}).Where("id = ?", phoneID).Updates(updates)
+
+	// Record stats
+	if req.Data.ActiveConnections > 0 || req.Data.TotalConnections > 0 {
+		stats := models.PhoneStats{
+			PhoneID:           phoneID,
+			ActiveConnections: req.Data.ActiveConnections,
+			TotalConnections:  req.Data.TotalConnections,
+		}
+		database.DB.Create(&stats)
+	}
+
+	// Return empty result to allow publish
+	c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
+}
+
 // GetUserPhonesForLogin returns unpaired phones for a user (for phone app login)
 func GetUserPhonesForLogin(c *gin.Context) {
 	email := c.Query("email")
