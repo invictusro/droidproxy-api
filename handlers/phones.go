@@ -549,6 +549,49 @@ func RefreshPhoneToken(c *gin.Context) {
 	})
 }
 
+// GetPhoneCredentials returns the connection credentials for an authenticated phone
+// This allows the phone to validate incoming proxy connections
+func GetPhoneCredentials(c *gin.Context) {
+	phone := middleware.GetCurrentPhone(c)
+	if phone == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone not authenticated"})
+		return
+	}
+
+	var credentials []models.ConnectionCredential
+	database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).Find(&credentials)
+
+	// Return simplified credential info for the phone
+	type PhoneCredential struct {
+		ID        string `json:"id"`
+		AuthType  string `json:"auth_type"`
+		ProxyType string `json:"proxy_type"`
+		AllowedIP string `json:"allowed_ip,omitempty"`
+		Username  string `json:"username,omitempty"`
+		Password  string `json:"password,omitempty"` // Phone needs plaintext for validation
+	}
+
+	result := make([]PhoneCredential, 0, len(credentials))
+	for _, cred := range credentials {
+		// Skip expired credentials
+		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
+			continue
+		}
+
+		pc := PhoneCredential{
+			ID:        cred.ID.String(),
+			AuthType:  string(cred.AuthType),
+			ProxyType: string(cred.ProxyType),
+			AllowedIP: cred.AllowedIP,
+			Username:  cred.Username,
+			Password:  cred.Password, // This is the bcrypt hash, phone will use bcrypt.Compare
+		}
+		result = append(result, pc)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"credentials": result})
+}
+
 // Helper functions
 
 func getNextAvailablePort(server *models.Server) (int, error) {

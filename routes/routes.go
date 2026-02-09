@@ -53,6 +53,11 @@ func Setup(cfg *config.Config) *gin.Engine {
 	r.POST("/api/phone-login", handlers.PhoneLogin)                // Email/password method
 	r.POST("/api/heartbeat", handlers.Heartbeat)
 
+	// Public rotation API (uses rotation token, no user auth)
+	r.GET("/api/rotate/:token", handlers.RotateIPByToken)
+	r.POST("/api/rotate/:token", handlers.RotateIPByToken)
+
+
 	// Phone-authenticated routes (requires X-Phone-ID and X-Phone-Token headers)
 	// These endpoints are exclusively for paired phones
 	phoneAPI := r.Group("/api/phone")
@@ -60,6 +65,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 	{
 		// Read-only endpoints - token auth is sufficient
 		phoneAPI.GET("/config", handlers.GetProxyConfig)
+		phoneAPI.GET("/credentials", handlers.GetPhoneCredentials)
 
 		// Sensitive write operations - require signature verification
 		// This prevents token theft from being used without the private key
@@ -87,6 +93,16 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.POST("/phones/:id/rotate-ip", handlers.RotateIP)
 		api.POST("/phones/:id/restart", handlers.RestartProxy)
 		api.GET("/phones/:id/stats", handlers.GetPhoneStats)
+
+		// Connection Credentials
+		api.GET("/phones/:id/credentials", handlers.ListCredentials)
+		api.POST("/phones/:id/credentials", handlers.CreateCredential)
+		api.PATCH("/phones/:id/credentials/:credId", handlers.UpdateCredential)
+		api.DELETE("/phones/:id/credentials/:credId", handlers.DeleteCredential)
+
+		// Rotation Token
+		api.GET("/phones/:id/rotation-token", handlers.GetRotationToken)
+		api.POST("/phones/:id/rotation-token/regenerate", handlers.RegenerateRotationToken)
 
 		// Servers (read for all, write for admins)
 		api.GET("/servers", handlers.ListServers)

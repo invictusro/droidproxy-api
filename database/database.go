@@ -39,6 +39,8 @@ func Migrate() error {
 		&models.Server{},
 		&models.Phone{},
 		&models.PhoneStats{},
+		&models.ConnectionCredential{},
+		&models.RotationToken{},
 	)
 	if err != nil {
 		return err

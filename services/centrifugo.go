@@ -13,20 +13,11 @@ import (
 
 var centrifugoClient *gocent.Client
 
-// CommandType represents different commands sent to phones
-type CommandType string
-
-const (
-	CmdRotateIP     CommandType = "ROTATE_IP"
-	CmdRestartProxy CommandType = "RESTART_PROXY"
-	CmdUpdateConfig CommandType = "UPDATE_CONFIG"
-	CmdDisconnect   CommandType = "DISCONNECT"
-)
-
 // PhoneCommand is the structure sent to phones via Centrifugo
+// Uses lowercase "command" field to match Android client expectations
 type PhoneCommand struct {
-	Type    CommandType `json:"type"`
-	PhoneID string      `json:"phone_id"`
+	Command string      `json:"command"`
+	PhoneID string      `json:"phone_id,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
@@ -53,7 +44,7 @@ func PublishToPhone(phoneID string, cmd PhoneCommand) error {
 		return err
 	}
 
-	log.Printf("Published command %s to phone %s", cmd.Type, phoneID)
+	log.Printf("Published command %s to phone %s", cmd.Command, phoneID)
 	return nil
 }
 
@@ -89,18 +80,34 @@ func GenerateClientToken(userID, channel string) (string, error) {
 	return token.SignedString([]byte(cfg.CentrifugoTokenSecret))
 }
 
+// GenerateDashboardToken generates a JWT token for a dashboard user to connect to Centrifugo
+// This token allows subscribing to all phone channels for the user
+func GenerateDashboardToken(userID string) (string, error) {
+	cfg := config.AppConfig
+	if cfg == nil {
+		return "", nil
+	}
+
+	// Token expires in 24 hours
+	claims := jwt.MapClaims{
+		"sub": userID,
+		"exp": time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(cfg.CentrifugoTokenSecret))
+}
+
 // SendRotateIP sends a rotate IP command to a phone
 func SendRotateIP(phoneID string) error {
 	return PublishToPhone(phoneID, PhoneCommand{
-		Type:    CmdRotateIP,
-		PhoneID: phoneID,
+		Command: "rotate_ip",
 	})
 }
 
 // SendRestartProxy sends a restart proxy command to a phone
 func SendRestartProxy(phoneID string) error {
 	return PublishToPhone(phoneID, PhoneCommand{
-		Type:    CmdRestartProxy,
-		PhoneID: phoneID,
+		Command: "restart",
 	})
 }
