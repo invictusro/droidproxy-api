@@ -1,0 +1,36 @@
+0 verbose cli /opt/homebrew/Cellar/node@20/20.19.3/bin/node /opt/homebrew/bin/npm
+1 info using npm@10.8.2
+2 info using node@v20.19.3
+3 silly config load:file:/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/invictus/Desktop/droidproxy/api/.npmrc
+5 silly config load:file:/Users/invictus/.npmrc
+6 silly config load:file:/Users/invictus/.npm-global/etc/npmrc
+7 verbose title npm run build
+8 verbose argv "run" "build"
+9 verbose logfile logs-max:10 dir:/Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T23_34_14_175Z-
+10 verbose logfile /Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T23_34_14_175Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 verbose stack Error: Could not read package.json: Error: ENOENT: no such file or directory, open '/Users/invictus/Desktop/droidproxy/api/package.json'
+12 verbose stack     at async open (node:internal/fs/promises:639:25)
+12 verbose stack     at async readFile (node:internal/fs/promises:1246:14)
+12 verbose stack     at async read (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/node_modules/@npmcli/package-json/lib/read-package.js:9:18)
+12 verbose stack     at async PackageJson.load (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/node_modules/@npmcli/package-json/lib/index.js:130:31)
+12 verbose stack     at async PackageJson.normalize (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/node_modules/@npmcli/package-json/lib/index.js:116:5)
+12 verbose stack     at async #run (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/commands/run-script.js:85:13)
+12 verbose stack     at async RunScript.exec (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/commands/run-script.js:39:7)
+12 verbose stack     at async Npm.exec (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/npm.js:207:9)
+12 verbose stack     at async module.exports (/opt/homebrew/Cellar/node@20/20.19.3/lib/node_modules/npm/lib/cli/entry.js:74:5)
+13 error code ENOENT
+14 error syscall open
+15 error path /Users/invictus/Desktop/droidproxy/api/package.json
+16 error errno -2
+17 error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/Users/invictus/Desktop/droidproxy/api/package.json'
+18 error enoent This is related to npm not being able to find a file.
+18 error enoent
+19 verbose cwd /Users/invictus/Desktop/droidproxy/api
+20 verbose os Darwin 24.5.0
+21 verbose node v20.19.3
+22 verbose npm  v10.8.2
+23 verbose exit -2
+24 verbose code -2
+25 error A complete log of this run can be found in: /Users/invictus/Desktop/droidproxy/api/.npm-cache/_logs/2026-02-08T23_34_14_175Z-debug-0.log

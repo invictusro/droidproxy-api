@@ -98,6 +98,12 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 	}
 }
 
+// ConnectionCredentialWithPassword includes plain password (only for creation response)
+type ConnectionCredentialWithPassword struct {
+	ConnectionCredentialResponse
+	Password string `json:"password,omitempty"` // Plain password, shown only on creation
+}
+
 // RotationToken allows external API access to rotate IP for a phone
 type RotationToken struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`

@@ -86,6 +86,7 @@ type PhoneResponse struct {
 	LastSeen   *time.Time     `json:"last_seen,omitempty"`
 	PairedAt   *time.Time     `json:"paired_at,omitempty"`
 	ProxyPort  int            `json:"proxy_port,omitempty"`
+	ServerIP   string         `json:"server_ip,omitempty"` // Server IP for proxy connection
 	Server     ServerResponse `json:"server,omitempty"`
 	CreatedAt  time.Time      `json:"created_at"`
 }
@@ -111,6 +112,7 @@ func (p *Phone) ToResponse() PhoneResponse {
 	}
 	if p.Server != nil {
 		resp.Server = p.Server.ToResponse()
+		resp.ServerIP = p.Server.IP // Include server IP for proxy connection
 	}
 	return resp
 }

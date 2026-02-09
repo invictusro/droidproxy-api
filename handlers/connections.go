@@ -117,7 +117,12 @@ func CreateCredential(c *gin.Context) {
 	// Notify phone to refresh credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
-	c.JSON(http.StatusCreated, gin.H{"credential": credential.ToResponse()})
+	// Return response with plain password (only on creation)
+	response := models.ConnectionCredentialWithPassword{
+		ConnectionCredentialResponse: credential.ToResponse(),
+		Password:                     req.Password, // Include plain password for user to copy
+	}
+	c.JSON(http.StatusCreated, gin.H{"credential": response})
 }
 
 // UpdateCredential updates a connection credential
