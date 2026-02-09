@@ -724,7 +724,11 @@ func generateWireGuardConfig(phone *models.Phone) string {
 	}
 
 	// Get next available WireGuard IP from server
-	wireGuardIP := getNextWireGuardIP(phone.Server)
+	wireGuardIP, err := getNextWireGuardIP(phone.Server)
+	if err != nil {
+		log.Printf("[WireGuard] Failed to allocate IP: %v", err)
+		return ""
+	}
 	phone.WireGuardIP = wireGuardIP
 
 	// Add this phone as a WireGuard peer on the server via SSH
@@ -746,7 +750,7 @@ PersistentKeepalive = 25
 // getNextWireGuardIP finds the next available WireGuard IP for a server
 // Uses 10.66.0.0/16 subnet (server is 10.66.0.1)
 // Range: 10.66.0.2 - 10.66.255.254 = 65,533 phones per server
-func getNextWireGuardIP(server *models.Server) string {
+func getNextWireGuardIP(server *models.Server) (string, error) {
 	// Get all used WireGuard IPs for this server
 	var usedIPs []string
 	database.DB.Model(&models.Phone{}).Where("server_id = ?", server.ID).Pluck("wire_guard_ip", &usedIPs)
@@ -768,13 +772,12 @@ func getNextWireGuardIP(server *models.Server) string {
 		for fourth := startFourth; fourth <= 254; fourth++ {
 			ip := fmt.Sprintf("10.66.%d.%d", third, fourth)
 			if !usedSet[ip] {
-				return ip
+				return ip, nil
 			}
 		}
 	}
 
-	// Fallback
-	return "10.66.0.2"
+	return "", fmt.Errorf("no available WireGuard IPs on server %s (all 65,533 IPs exhausted)", server.Name)
 }
 
 // addWireGuardPeerToServer adds the phone as a WireGuard peer on the server
