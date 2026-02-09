@@ -157,6 +157,70 @@ func GetPhone(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"phone": phone.ToResponse()})
 }
 
+// SetupPhoneDNS creates a DNS record for an existing phone that doesn't have one
+func SetupPhoneDNS(c *gin.Context) {
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	userID := middleware.GetCurrentUserID(c)
+
+	var phone models.Phone
+	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	// Check if phone already has DNS
+	if phone.DNSRecordID != 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone already has a DNS record", "proxy_domain": phone.ProxyDomain})
+		return
+	}
+
+	// Check if server has DNS configured
+	if phone.Server == nil || phone.Server.DNSSubdomain == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Server does not have DNS configured. Set up server DNS first."})
+		return
+	}
+
+	dnsManager := dns.GetManager()
+	if dnsManager == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "DNS manager not configured"})
+		return
+	}
+
+	// Generate unique subdomain for this proxy
+	proxySubdomain := dns.GenerateProxySubdomain()
+
+	// Create CNAME record pointing to server's A record
+	dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, phone.Server.DNSSubdomain)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create DNS record: " + err.Error()})
+		return
+	}
+
+	phone.ProxySubdomain = dnsRecord.Subdomain
+	phone.ProxyDomain = dnsRecord.FullDomain
+	phone.DNSRecordID = dnsRecord.RecordID
+
+	if err := database.DB.Save(&phone).Error; err != nil {
+		// Cleanup DNS record
+		dnsManager.DeleteProxyRecord(dnsRecord.RecordID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update phone"})
+		return
+	}
+
+	log.Printf("[SetupPhoneDNS] Created DNS record: %s -> %s", dnsRecord.FullDomain, dnsRecord.TargetHost)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "DNS record created",
+		"proxy_domain": dnsRecord.FullDomain,
+		"phone":        phone.ToResponse(),
+	})
+}
+
 // DeletePhone removes a phone
 func DeletePhone(c *gin.Context) {
 	phoneID, err := uuid.Parse(c.Param("id"))
