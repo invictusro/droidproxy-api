@@ -10,14 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type PhoneStatus string
-
-const (
-	StatusPending PhoneStatus = "pending"
-	StatusOnline  PhoneStatus = "online"
-	StatusOffline PhoneStatus = "offline"
-)
-
 type Phone struct {
 	ID              uuid.UUID   `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	UserID          uuid.UUID   `gorm:"type:uuid;not null" json:"user_id"`
@@ -35,9 +27,6 @@ type Phone struct {
 	WireGuardConfig    string      `json:"-"` // Sensitive, only returned during pairing
 	WireGuardPrivateKey string     `json:"-"` // Phone's WireGuard private key
 	WireGuardPublicKey  string     `json:"-"` // Phone's WireGuard public key
-	Status             PhoneStatus `gorm:"default:pending" json:"status"`
-	LastSeen        *time.Time  `json:"last_seen"`
-	CurrentIP       string      `json:"current_ip"`
 	CreatedAt       time.Time   `json:"created_at"`
 
 	// DNS routing fields (for dynamic proxy routing via CNAME)
@@ -85,12 +74,10 @@ func GenerateAPIToken() string {
 }
 
 // PhoneResponse is the public representation
+// Note: status, current_ip, last_seen come from Centrifugo real-time data, not database
 type PhoneResponse struct {
 	ID          uuid.UUID      `json:"id"`
 	Name        string         `json:"name"`
-	Status      PhoneStatus    `json:"status"`
-	CurrentIP   string         `json:"current_ip,omitempty"`
-	LastSeen    *time.Time     `json:"last_seen,omitempty"`
 	PairedAt    *time.Time     `json:"paired_at,omitempty"`
 	ProxyPort   int            `json:"proxy_port,omitempty"`  // SOCKS5 port
 	HTTPPort    int            `json:"http_port,omitempty"`   // HTTP proxy port
@@ -112,9 +99,6 @@ func (p *Phone) ToResponse() PhoneResponse {
 	resp := PhoneResponse{
 		ID:          p.ID,
 		Name:        p.Name,
-		Status:      p.Status,
-		CurrentIP:   p.CurrentIP,
-		LastSeen:    p.LastSeen,
 		PairedAt:    p.PairedAt,
 		ProxyPort:   p.ProxyPort,
 		HTTPPort:    p.HTTPPort,
@@ -158,7 +142,6 @@ type PhoneListForLoginResponse struct {
 type PhoneLoginInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	Status      string `json:"status"`
 	ServerName  string `json:"server_name"`
 	PairingCode string `json:"pairing_code"` // Needed for key derivation on client
 }
@@ -181,7 +164,6 @@ type ProxyConfigResponse struct {
 	ServerIP        string `json:"server_ip"`
 	ProxyPort       int    `json:"proxy_port"`
 	WireGuardConfig string `json:"wireguard_config"`
-	Status          string `json:"status"`
 	CentrifugoURL   string `json:"centrifugo_url"`
 	CentrifugoToken string `json:"centrifugo_token"`
 }

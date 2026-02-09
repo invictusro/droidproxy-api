@@ -127,10 +127,16 @@ func CreateCredential(c *gin.Context) {
 	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
+	// Load server relationship for proxy setup
+	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+
+	// Update SOCKS5 forwarder on server if this credential supports SOCKS5
+	if credential.ProxyType == models.ProxyTypeSOCKS5 || credential.ProxyType == models.ProxyTypeBoth {
+		go updateSocks5Forwarder(&phone) // Run async to not block response
+	}
+
 	// Update HTTP proxy on server if this credential supports HTTP
 	if credential.ProxyType == models.ProxyTypeHTTP || credential.ProxyType == models.ProxyTypeBoth {
-		// Load server relationship
-		database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
 		go updateHTTPProxyCredentials(&phone) // Run async to not block response
 	}
 
@@ -218,8 +224,9 @@ func UpdateCredential(c *gin.Context) {
 	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
-	// Update HTTP proxy on server
+	// Update proxies on server
 	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	go updateSocks5Forwarder(&phone)
 	go updateHTTPProxyCredentials(&phone)
 
 	c.JSON(http.StatusOK, gin.H{"credential": credential.ToResponse()})
@@ -255,8 +262,9 @@ func DeleteCredential(c *gin.Context) {
 	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
-	// Update HTTP proxy on server
+	// Update proxies on server
 	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	go updateSocks5Forwarder(&phone)
 	go updateHTTPProxyCredentials(&phone)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Credential deleted"})
@@ -398,6 +406,57 @@ func notifyPhoneCredentialsUpdated(phoneID string) {
 	}
 
 	phonecomm.SendCredentialsUpdate(phoneID, phoneCredentials)
+}
+
+// updateSocks5Forwarder sets up/updates the SOCKS5 forwarder on the server
+// This forwards external connections from server:socks5Port to phone:1080 via WireGuard
+func updateSocks5Forwarder(phone *models.Phone) error {
+	if phone.ServerID == nil || phone.ProxyPort == 0 || phone.WireGuardIP == "" {
+		return nil // No server, port, or WireGuard IP configured
+	}
+
+	// Get server
+	var server models.Server
+	if err := database.DB.First(&server, "id = ?", phone.ServerID).Error; err != nil {
+		return err
+	}
+
+	if server.SSHPassword == "" {
+		return nil // No SSH credentials
+	}
+
+	// Get SOCKS5-compatible credentials (socks5 or both)
+	var credentials []models.ConnectionCredential
+	database.DB.Where("phone_id = ? AND is_active = ? AND (proxy_type = ? OR proxy_type = ?)",
+		phone.ID, true, models.ProxyTypeSOCKS5, models.ProxyTypeBoth).Find(&credentials)
+
+	// Filter out expired and build credential list
+	socks5Creds := make([]infra.GostCredential, 0, len(credentials))
+	for _, cred := range credentials {
+		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
+			continue
+		}
+		// Only userpass auth works for GOST SOCKS5
+		if cred.AuthType == models.AuthTypeUserPass && cred.Username != "" && cred.Password != "" {
+			socks5Creds = append(socks5Creds, infra.GostCredential{
+				Username: cred.Username,
+				Password: cred.Password,
+			})
+		}
+	}
+
+	// Connect to server and set up SOCKS5 forwarder
+	client := infra.NewSSHClient(server.IP, server.SSHPort, server.SSHUser, server.SSHPassword)
+	if err := client.Connect(); err != nil {
+		return err
+	}
+	defer client.Close()
+
+	proxyManager := infra.NewGostManager(client)
+
+	// Start/update SOCKS5 forwarder
+	_, err := proxyManager.StartSocks5Forwarder(phone.ID.String(), phone.ProxyPort, phone.WireGuardIP, socks5Creds)
+	return err
 }
 
 // updateHTTPProxyCredentials updates the HTTP proxy on the server with HTTP-compatible credentials

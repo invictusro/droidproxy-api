@@ -96,7 +96,6 @@ func CreatePhone(c *gin.Context) {
 		UserID:   userID,
 		ServerID: &serverID,
 		Name:     req.Name,
-		Status:   models.StatusPending,
 	}
 
 	// Generate unique proxy subdomain and create DNS record if DNS manager is configured
@@ -198,6 +197,7 @@ func DeletePhone(c *gin.Context) {
 }
 
 // RotateIP sends a rotate IP command to a phone
+// Note: Status is real-time via Centrifugo, we just send the command
 func RotateIP(c *gin.Context) {
 	phoneID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -210,14 +210,6 @@ func RotateIP(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
-		return
-	}
-
-	// Log the attempt
-	fmt.Printf("[RotateIP] Phone %s status: %s\n", phoneID, phone.Status)
-
-	if phone.Status != models.StatusOnline {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Phone is not online (status: %s)", phone.Status)})
 		return
 	}
 
@@ -348,7 +340,6 @@ func PairPhone(c *gin.Context) {
 	phone.APIToken = apiToken
 	phone.PublicKey = publicKeyPEM
 	phone.DeviceFingerprint = fingerprintHash
-	phone.Status = models.StatusOffline
 	database.DB.Save(&phone)
 
 	// Generate Centrifugo token for this phone
@@ -373,6 +364,7 @@ func PairPhone(c *gin.Context) {
 }
 
 // Heartbeat handles status updates from Android app
+// Note: Status is real-time data via Centrifugo, not stored in database
 func Heartbeat(c *gin.Context) {
 	var req models.HeartbeatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -406,18 +398,7 @@ func Heartbeat(c *gin.Context) {
 		return
 	}
 
-	// Update phone status
-	now := time.Now()
-	phone.LastSeen = &now
-	phone.CurrentIP = req.CurrentIP
-	if req.Status == "online" {
-		phone.Status = models.StatusOnline
-	} else {
-		phone.Status = models.StatusOffline
-	}
-	database.DB.Save(&phone)
-
-	// Record stats
+	// Record stats (status is real-time via Centrifugo, not stored)
 	stats := models.PhoneStats{
 		PhoneID:           phoneID,
 		ActiveConnections: req.ActiveConnections,
@@ -429,7 +410,7 @@ func Heartbeat(c *gin.Context) {
 }
 
 // CentrifugoPublishProxy handles proxied publish events from Centrifugo
-// This updates last_seen and status in the database when phones publish status
+// Status data is real-time only (not stored in database)
 func CentrifugoPublishProxy(c *gin.Context) {
 	var req struct {
 		Channel string `json:"channel"`
@@ -449,7 +430,7 @@ func CentrifugoPublishProxy(c *gin.Context) {
 		return
 	}
 
-	// Only process status updates
+	// Only process status updates for stats recording
 	if req.Data.Type != "status" || req.Data.PhoneID == "" {
 		c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
 		return
@@ -461,21 +442,7 @@ func CentrifugoPublishProxy(c *gin.Context) {
 		return
 	}
 
-	// Update phone in database
-	now := time.Now()
-	updates := map[string]interface{}{
-		"last_seen":  now,
-		"current_ip": req.Data.CurrentIP,
-	}
-	if req.Data.Status == "online" {
-		updates["status"] = models.StatusOnline
-	} else if req.Data.Status == "offline" {
-		updates["status"] = models.StatusOffline
-	}
-
-	database.DB.Model(&models.Phone{}).Where("id = ?", phoneID).Updates(updates)
-
-	// Record stats
+	// Record stats (but don't store status in database - it's real-time data)
 	if req.Data.ActiveConnections > 0 || req.Data.TotalConnections > 0 {
 		stats := models.PhoneStats{
 			PhoneID:           phoneID,
@@ -516,7 +483,6 @@ func GetUserPhonesForLogin(c *gin.Context) {
 		phoneInfos[i] = models.PhoneLoginInfo{
 			ID:          p.ID.String(),
 			Name:        p.Name,
-			Status:      string(p.Status),
 			ServerName:  serverName,
 			PairingCode: p.PairingCode, // Needed for client-side key derivation
 		}
@@ -615,7 +581,6 @@ func PhoneLogin(c *gin.Context) {
 	phone.APIToken = apiToken
 	phone.PublicKey = publicKeyPEM
 	phone.DeviceFingerprint = fingerprintHash
-	phone.Status = models.StatusOffline
 	database.DB.Save(&phone)
 
 	// Generate Centrifugo token for this phone
@@ -662,7 +627,6 @@ func GetProxyConfig(c *gin.Context) {
 		ServerIP:        phone.Server.IP,
 		ProxyPort:       phone.ProxyPort,
 		WireGuardConfig: phone.WireGuardConfig,
-		Status:          string(phone.Status),
 		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
 		CentrifugoToken: centrifugoToken,
 	})
