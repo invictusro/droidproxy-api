@@ -167,12 +167,15 @@ func DeletePhone(c *gin.Context) {
 
 	userID := middleware.GetCurrentUserID(c)
 
-	// First, get the phone to check for DNS record
+	// First, get the phone with server for cleanup
 	var phone models.Phone
-	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
 	}
+
+	// Clean up server-side resources (GOST forwarder, route, WireGuard peer)
+	go cleanupPhoneServerResources(&phone)
 
 	// Delete DNS record if it exists
 	if phone.DNSRecordID != 0 {
@@ -811,5 +814,42 @@ func addWireGuardPeerToServer(server *models.Server, publicKey, ip string) {
 		fmt.Printf("[WireGuard] Failed to add peer %s: %v\n", ip, err)
 	} else {
 		fmt.Printf("[WireGuard] Added peer %s to server %s\n", ip, server.Name)
+	}
+}
+
+// cleanupPhoneServerResources removes GOST forwarder, route, and WireGuard peer for a phone
+func cleanupPhoneServerResources(phone *models.Phone) {
+	if phone.Server == nil || phone.Server.SSHPassword == "" {
+		return // No server or SSH credentials configured
+	}
+
+	client := infra.NewSSHClient(phone.Server.IP, phone.Server.SSHPort, phone.Server.SSHUser, phone.Server.SSHPassword)
+	if err := client.Connect(); err != nil {
+		log.Printf("[Cleanup] Failed to connect to server %s: %v", phone.Server.Name, err)
+		return
+	}
+	defer client.Close()
+
+	// Stop GOST SOCKS5 forwarder and remove route
+	gostManager := infra.NewGostManager(client)
+	if _, err := gostManager.StopSocks5Forwarder(phone.ID.String(), phone.WireGuardIP); err != nil {
+		log.Printf("[Cleanup] Failed to stop SOCKS5 forwarder for phone %s: %v", phone.ID, err)
+	} else {
+		log.Printf("[Cleanup] Stopped SOCKS5 forwarder for phone %s", phone.ID)
+	}
+
+	// Stop HTTP proxy
+	if _, err := gostManager.StopProxy(phone.ID.String()); err != nil {
+		log.Printf("[Cleanup] Failed to stop HTTP proxy for phone %s: %v", phone.ID, err)
+	}
+
+	// Remove WireGuard peer
+	if phone.WireGuardPublicKey != "" {
+		wgManager := infra.NewWireGuardManager(client)
+		if err := wgManager.RemovePeer(phone.WireGuardPublicKey); err != nil {
+			log.Printf("[Cleanup] Failed to remove WireGuard peer for phone %s: %v", phone.ID, err)
+		} else {
+			log.Printf("[Cleanup] Removed WireGuard peer for phone %s", phone.ID)
+		}
 	}
 }

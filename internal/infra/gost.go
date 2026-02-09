@@ -30,6 +30,9 @@ func (m *GostManager) StartSocks5Forwarder(phoneID string, socks5Port int, phone
 	// Create secrets directory if it doesn't exist
 	m.client.Run("mkdir -p /etc/gost")
 
+	// Ensure route to phone's WireGuard IP exists via wg0 interface
+	m.client.Run(fmt.Sprintf("ip route add %s/32 dev wg0 2>/dev/null || true", phoneWireGuardIP))
+
 	// Create secrets file with all credentials
 	var secretsContent strings.Builder
 	for _, cred := range credentials {
@@ -45,22 +48,24 @@ func (m *GostManager) StartSocks5Forwarder(phoneID string, socks5Port int, phone
 	}
 
 	// Create systemd service file
+	// We use secrets file for incoming auth validation, and first credential to forward to phone
 	var serviceContent string
 	if len(credentials) > 0 {
-		// With authentication via secrets file
+		// With authentication via secrets file on listener, forward first credential to phone
+		firstCred := credentials[0]
 		serviceContent = fmt.Sprintf(`[Unit]
 Description=Gost SOCKS5 Forwarder for %s
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/gost -L "socks5://:%d?secrets=%s" -F "socks5://%s:1080"
+ExecStart=/usr/local/bin/gost -L "socks5://:%d?secrets=%s" -F "socks5://%s:%s@%s:1080"
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-`, phoneID, socks5Port, secretsFile, phoneWireGuardIP)
+`, phoneID, socks5Port, secretsFile, firstCred.Username, firstCred.Password, phoneWireGuardIP)
 	} else {
 		// Without authentication (IP whitelist mode)
 		serviceContent = fmt.Sprintf(`[Unit]
@@ -97,7 +102,7 @@ WantedBy=multi-user.target
 }
 
 // StopSocks5Forwarder stops and removes the SOCKS5 forwarder service
-func (m *GostManager) StopSocks5Forwarder(phoneID string) (*CommandResult, error) {
+func (m *GostManager) StopSocks5Forwarder(phoneID string, phoneWireGuardIP string) (*CommandResult, error) {
 	serviceName := fmt.Sprintf("gost-socks5-%s", phoneID)
 	secretsFile := fmt.Sprintf("/etc/gost/socks5-secrets-%s.txt", phoneID)
 
@@ -109,6 +114,11 @@ func (m *GostManager) StopSocks5Forwarder(phoneID string) (*CommandResult, error
 		"systemctl daemon-reload",
 	}
 
+	// Remove route if WireGuard IP is provided
+	if phoneWireGuardIP != "" {
+		commands = append(commands, fmt.Sprintf("ip route del %s/32 dev wg0 2>/dev/null || true", phoneWireGuardIP))
+	}
+
 	results, err := m.client.RunMultiple(commands)
 	if err != nil {
 		return nil, err
@@ -117,6 +127,18 @@ func (m *GostManager) StopSocks5Forwarder(phoneID string) (*CommandResult, error
 		return results[len(results)-1], nil
 	}
 	return nil, nil
+}
+
+// UpdateSocks5Credentials updates the credentials for a SOCKS5 forwarder and restarts the service
+func (m *GostManager) UpdateSocks5Credentials(phoneID string, socks5Port int, phoneWireGuardIP string, credentials []GostCredential) (*CommandResult, error) {
+	// Simply restart the forwarder with new credentials
+	// This ensures both the secrets file and the -F flag are updated
+	return m.StartSocks5Forwarder(phoneID, socks5Port, phoneWireGuardIP, credentials)
+}
+
+// EnsureRoute ensures a route to the phone's WireGuard IP exists via wg0
+func (m *GostManager) EnsureRoute(phoneWireGuardIP string) (*CommandResult, error) {
+	return m.client.Run(fmt.Sprintf("ip route add %s/32 dev wg0 2>/dev/null || true", phoneWireGuardIP))
 }
 
 // StartProxy starts an HTTP proxy that forwards to a SOCKS5 proxy
