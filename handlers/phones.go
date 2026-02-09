@@ -732,7 +732,7 @@ func generateWireGuardConfig(phone *models.Phone) string {
 
 	return fmt.Sprintf(`[Interface]
 PrivateKey = %s
-Address = %s/24
+Address = %s/16
 DNS = 1.1.1.1
 
 [Peer]
@@ -744,8 +744,8 @@ PersistentKeepalive = 25
 }
 
 // getNextWireGuardIP finds the next available WireGuard IP for a server
-// Uses 10.66.66.0/24 subnet to match server config (10.66.66.1/24)
-// Range: 10.66.66.2 - 10.66.66.254 = 253 phones per server
+// Uses 10.66.0.0/16 subnet (server is 10.66.0.1)
+// Range: 10.66.0.2 - 10.66.255.254 = 65,533 phones per server
 func getNextWireGuardIP(server *models.Server) string {
 	// Get all used WireGuard IPs for this server
 	var usedIPs []string
@@ -758,17 +758,23 @@ func getNextWireGuardIP(server *models.Server) string {
 		}
 	}
 
-	// Find first available IP in 10.66.66.0/24 (server is 10.66.66.1, phones start at 10.66.66.2)
-	// Range: 10.66.66.2 - 10.66.66.254 = 253 IPs per server
-	for fourth := 2; fourth <= 254; fourth++ {
-		ip := fmt.Sprintf("10.66.66.%d", fourth)
-		if !usedSet[ip] {
-			return ip
+	// Find first available IP in 10.66.0.0/16 (server is 10.66.0.1, phones start at 10.66.0.2)
+	// Range: 10.66.0.2 - 10.66.255.254 = 65,533 IPs per server
+	for third := 0; third <= 255; third++ {
+		startFourth := 2
+		if third > 0 {
+			startFourth = 1 // Only skip .0 and .1 in first octet
+		}
+		for fourth := startFourth; fourth <= 254; fourth++ {
+			ip := fmt.Sprintf("10.66.%d.%d", third, fourth)
+			if !usedSet[ip] {
+				return ip
+			}
 		}
 	}
 
 	// Fallback
-	return "10.66.66.2"
+	return "10.66.0.2"
 }
 
 // addWireGuardPeerToServer adds the phone as a WireGuard peer on the server
