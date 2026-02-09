@@ -29,6 +29,13 @@ type Config struct {
 	CentrifugoAPIKey      string `mapstructure:"CENTRIFUGO_API_KEY"`
 	CentrifugoTokenSecret string `mapstructure:"CENTRIFUGO_TOKEN_SECRET"`
 
+	// Rage4 DNS (for dynamic proxy routing)
+	Rage4Email       string `mapstructure:"RAGE4_EMAIL"`        // Rage4 account email
+	Rage4APIKey      string `mapstructure:"RAGE4_API_KEY"`      // Rage4 API key
+	Rage4DomainID    int64  `mapstructure:"RAGE4_DOMAIN_ID"`    // Rage4 domain ID
+	Rage4DomainName  string `mapstructure:"RAGE4_DOMAIN_NAME"`  // Base domain (e.g., "yalx.in")
+	Rage4CNAMEPrefix string `mapstructure:"RAGE4_CNAME_PREFIX"` // CNAME prefix (e.g., "cn" for *.cn.yalx.in)
+
 	// Server
 	Port        string `mapstructure:"PORT"`
 	Env         string `mapstructure:"ENV"`
@@ -60,6 +67,13 @@ func Load() (*Config, error) {
 	viper.BindEnv("FRONTEND_URL")
 	viper.BindEnv("API_BASE_URL")
 
+	// Rage4 DNS
+	viper.BindEnv("RAGE4_EMAIL")
+	viper.BindEnv("RAGE4_API_KEY")
+	viper.BindEnv("RAGE4_DOMAIN_ID")
+	viper.BindEnv("RAGE4_DOMAIN_NAME")
+	viper.BindEnv("RAGE4_CNAME_PREFIX")
+
 	// Set defaults
 	viper.SetDefault("PORT", "8080")
 	viper.SetDefault("ENV", "development")
@@ -67,6 +81,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("CENTRIFUGO_URL", "http://localhost:8000")
 	viper.SetDefault("CENTRIFUGO_PUBLIC_URL", "") // Falls back to CENTRIFUGO_URL if not set
 	viper.SetDefault("API_BASE_URL", "https://api.alobot.io")
+	viper.SetDefault("RAGE4_CNAME_PREFIX", "cn") // Default CNAME prefix
 
 	// Only try to read .env file if it exists
 	if _, err := os.Stat(".env"); err == nil {
@@ -100,6 +115,11 @@ func Load() (*Config, error) {
 		CentrifugoPublicURL:   centrifugoPublicURL,
 		CentrifugoAPIKey:      viper.GetString("CENTRIFUGO_API_KEY"),
 		CentrifugoTokenSecret: viper.GetString("CENTRIFUGO_TOKEN_SECRET"),
+		Rage4Email:            viper.GetString("RAGE4_EMAIL"),
+		Rage4APIKey:           viper.GetString("RAGE4_API_KEY"),
+		Rage4DomainID:         viper.GetInt64("RAGE4_DOMAIN_ID"),
+		Rage4DomainName:       viper.GetString("RAGE4_DOMAIN_NAME"),
+		Rage4CNAMEPrefix:      viper.GetString("RAGE4_CNAME_PREFIX"),
 		Port:                  viper.GetString("PORT"),
 		Env:                   viper.GetString("ENV"),
 		FrontendURL:           viper.GetString("FRONTEND_URL"),

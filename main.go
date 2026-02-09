@@ -6,6 +6,7 @@ import (
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
 	"github.com/droidproxy/api/handlers"
+	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/routes"
 )
@@ -36,6 +37,24 @@ func main() {
 	// Initialize phone communication services
 	phone.InitCommander(cfg.CentrifugoURL, cfg.CentrifugoAPIKey)
 	phone.InitRealtime(cfg.CentrifugoURL, cfg.CentrifugoAPIKey, cfg.CentrifugoTokenSecret)
+
+	// Initialize DNS manager for dynamic proxy routing (optional)
+	if cfg.Rage4APIKey != "" && cfg.Rage4DomainID != 0 {
+		dnsManager := dns.InitGlobal(dns.ManagerConfig{
+			Email:       cfg.Rage4Email,
+			APIKey:      cfg.Rage4APIKey,
+			DomainID:    cfg.Rage4DomainID,
+			DomainName:  cfg.Rage4DomainName,
+			CNAMEPrefix: cfg.Rage4CNAMEPrefix,
+		})
+		if err := dnsManager.VerifyConfiguration(); err != nil {
+			log.Printf("Warning: DNS manager verification failed: %v", err)
+		} else {
+			log.Println("DNS manager initialized and verified")
+		}
+	} else {
+		log.Println("DNS manager not configured (RAGE4_API_KEY or RAGE4_DOMAIN_ID missing)")
+	}
 
 	// Setup routes
 	router := routes.Setup(cfg)

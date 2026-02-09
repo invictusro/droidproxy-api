@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/infra"
 	"github.com/droidproxy/api/middleware"
 	"github.com/droidproxy/api/models"
@@ -23,6 +25,7 @@ type CreateServerRequest struct {
 	SSHPort        int    `json:"ssh_port"`
 	SSHUser        string `json:"ssh_user"`
 	SSHPassword    string `json:"ssh_password"`
+	DNSSubdomain   string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
 }
 
 // UpdateServerRequest is the request body for updating a server
@@ -37,6 +40,12 @@ type UpdateServerRequest struct {
 	SSHUser        string `json:"ssh_user"`
 	SSHPassword    string `json:"ssh_password"`
 	IsActive       *bool  `json:"is_active"`
+	DNSSubdomain   string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
+}
+
+// FailoverRequest is the request body for server failover
+type FailoverRequest struct {
+	TargetServerID string `json:"target_server_id" binding:"required"` // Server to failover to
 }
 
 // SSHCommandRequest is the request body for running SSH commands
@@ -104,6 +113,7 @@ func CreateServer(c *gin.Context) {
 		SSHPort:        req.SSHPort,
 		SSHUser:        req.SSHUser,
 		SSHPassword:    req.SSHPassword,
+		DNSSubdomain:   req.DNSSubdomain,
 		IsActive:       true,
 	}
 
@@ -124,7 +134,30 @@ func CreateServer(c *gin.Context) {
 		server.SSHUser = "root"
 	}
 
+	// Create DNS A record if subdomain is provided and DNS manager is configured
+	if req.DNSSubdomain != "" {
+		dnsManager := dns.GetManager()
+		if dnsManager != nil {
+			dnsRecord, err := dnsManager.CreateServerRecord(req.DNSSubdomain, req.IP)
+			if err != nil {
+				log.Printf("[CreateServer] Failed to create DNS record: %v", err)
+				// Continue without DNS - not a fatal error
+			} else {
+				server.DNSDomain = dnsRecord.FullDomain
+				server.DNSRecordID = dnsRecord.RecordID
+				log.Printf("[CreateServer] Created DNS record: %s -> %s", dnsRecord.FullDomain, req.IP)
+			}
+		}
+	}
+
 	if err := database.DB.Create(&server).Error; err != nil {
+		// Cleanup DNS record if creation failed
+		if server.DNSRecordID != 0 {
+			dnsManager := dns.GetManager()
+			if dnsManager != nil {
+				dnsManager.DeleteServerRecord(server.DNSRecordID)
+			}
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create server"})
 		return
 	}
@@ -175,6 +208,10 @@ func UpdateServer(c *gin.Context) {
 		return
 	}
 
+	// Track if IP changed for DNS update
+	ipChanged := req.IP != "" && req.IP != server.IP
+	oldIP := server.IP
+
 	// Update fields if provided
 	if req.Name != "" {
 		server.Name = req.Name
@@ -205,6 +242,41 @@ func UpdateServer(c *gin.Context) {
 	}
 	if req.IsActive != nil {
 		server.IsActive = *req.IsActive
+	}
+
+	// Handle DNS subdomain changes
+	dnsManager := dns.GetManager()
+	if req.DNSSubdomain != "" && req.DNSSubdomain != server.DNSSubdomain {
+		// Subdomain is being changed or set for first time
+		if dnsManager != nil {
+			// Delete old DNS record if exists
+			if server.DNSRecordID != 0 {
+				if err := dnsManager.DeleteServerRecord(server.DNSRecordID); err != nil {
+					log.Printf("[UpdateServer] Failed to delete old DNS record: %v", err)
+				}
+			}
+			// Create new DNS record
+			ip := server.IP
+			if req.IP != "" {
+				ip = req.IP
+			}
+			dnsRecord, err := dnsManager.CreateServerRecord(req.DNSSubdomain, ip)
+			if err != nil {
+				log.Printf("[UpdateServer] Failed to create DNS record: %v", err)
+			} else {
+				server.DNSSubdomain = req.DNSSubdomain
+				server.DNSDomain = dnsRecord.FullDomain
+				server.DNSRecordID = dnsRecord.RecordID
+				log.Printf("[UpdateServer] Created DNS record: %s -> %s", dnsRecord.FullDomain, ip)
+			}
+		}
+	} else if ipChanged && server.DNSRecordID != 0 && dnsManager != nil {
+		// IP changed, update existing DNS record
+		if err := dnsManager.UpdateServerRecord(server.DNSRecordID, server.DNSSubdomain, req.IP); err != nil {
+			log.Printf("[UpdateServer] Failed to update DNS record: %v (old IP: %s, new IP: %s)", err, oldIP, req.IP)
+		} else {
+			log.Printf("[UpdateServer] Updated DNS record: %s -> %s", server.DNSDomain, req.IP)
+		}
 	}
 
 	if err := database.DB.Save(&server).Error; err != nil {
@@ -557,4 +629,157 @@ func GetFirewallStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": result})
+}
+
+// FailoverServer redirects all phones from this server to a target server (admin only)
+// This updates all CNAME records to point to the new server
+func FailoverServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	var req FailoverRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	targetServerID, err := uuid.Parse(req.TargetServerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target server ID"})
+		return
+	}
+
+	// Get source server
+	var sourceServer models.Server
+	if err := database.DB.First(&sourceServer, "id = ?", serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Source server not found"})
+		return
+	}
+
+	// Get target server
+	var targetServer models.Server
+	if err := database.DB.First(&targetServer, "id = ?", targetServerID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Target server not found"})
+		return
+	}
+
+	// Validate DNS is configured
+	if targetServer.DNSSubdomain == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Target server has no DNS subdomain configured"})
+		return
+	}
+
+	dnsManager := dns.GetManager()
+	if dnsManager == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "DNS manager not configured"})
+		return
+	}
+
+	// Get all phones on the source server that have DNS records
+	var phones []models.Phone
+	if err := database.DB.Where("server_id = ? AND dns_record_id != 0", serverID).Find(&phones).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch phones"})
+		return
+	}
+
+	if len(phones) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message":   "No phones with DNS records to failover",
+			"succeeded": 0,
+			"failed":    0,
+		})
+		return
+	}
+
+	// Build list of DNS records to update
+	var records []dns.ProxyDNSRecord
+	for _, phone := range phones {
+		records = append(records, dns.ProxyDNSRecord{
+			Subdomain:  phone.ProxySubdomain,
+			FullDomain: phone.ProxyDomain,
+			RecordID:   phone.DNSRecordID,
+		})
+	}
+
+	// Perform bulk failover
+	succeeded, failed := dnsManager.BulkFailover(records, targetServer.DNSSubdomain)
+
+	// Update phone records to point to new server (optional - depends on whether you want to track the change)
+	// For now, we'll just update the DNS records, not the phone's server_id
+	// This allows the original association to remain while traffic is redirected
+
+	log.Printf("[FailoverServer] Failover from %s to %s: %d succeeded, %d failed",
+		sourceServer.Name, targetServer.Name, succeeded, failed)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Failover completed",
+		"succeeded": succeeded,
+		"failed":    failed,
+		"source":    sourceServer.Name,
+		"target":    targetServer.Name,
+	})
+}
+
+// SetupServerDNS creates a DNS A record for a server that doesn't have one (admin only)
+func SetupServerDNS(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	type SetupDNSRequest struct {
+		DNSSubdomain string `json:"dns_subdomain" binding:"required"`
+	}
+
+	var req SetupDNSRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var server models.Server
+	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+
+	if server.DNSRecordID != 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Server already has a DNS record"})
+		return
+	}
+
+	dnsManager := dns.GetManager()
+	if dnsManager == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "DNS manager not configured"})
+		return
+	}
+
+	dnsRecord, err := dnsManager.CreateServerRecord(req.DNSSubdomain, server.IP)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create DNS record: " + err.Error()})
+		return
+	}
+
+	server.DNSSubdomain = req.DNSSubdomain
+	server.DNSDomain = dnsRecord.FullDomain
+	server.DNSRecordID = dnsRecord.RecordID
+
+	if err := database.DB.Save(&server).Error; err != nil {
+		// Cleanup DNS record
+		dnsManager.DeleteServerRecord(dnsRecord.RecordID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update server"})
+		return
+	}
+
+	log.Printf("[SetupServerDNS] Created DNS record: %s -> %s", dnsRecord.FullDomain, server.IP)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "DNS record created",
+		"dns_domain": dnsRecord.FullDomain,
+		"server":     server.ToAdminResponse(),
+	})
 }

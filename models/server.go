@@ -29,6 +29,11 @@ type Server struct {
 	IsSetup     bool      `gorm:"default:false" json:"-"` // Whether server has been set up
 	LastCheckAt *time.Time `json:"-"`                      // Last health check
 
+	// DNS routing fields (for dynamic proxy routing)
+	DNSSubdomain string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
+	DNSDomain    string `json:"dns_domain"`    // Full server domain (e.g., "x1.yalx.in")
+	DNSRecordID  int64  `json:"-"`             // Rage4 DNS record ID for updates/deletion
+
 	// Relationships
 	Phones []Phone `gorm:"foreignKey:ServerID" json:"phones,omitempty"`
 }
@@ -63,6 +68,8 @@ type ServerAdminResponse struct {
 	HasSSHPassword bool       `json:"has_ssh_password"`
 	IsSetup        bool       `json:"is_setup"`
 	IsActive       bool       `json:"is_active"`
+	DNSSubdomain   string     `json:"dns_subdomain,omitempty"` // Server subdomain (e.g., "x1")
+	DNSDomain      string     `json:"dns_domain,omitempty"`    // Full server domain (e.g., "x1.yalx.in")
 	LastCheckAt    *time.Time `json:"last_check_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	PhoneCount     int        `json:"phone_count"`
@@ -92,6 +99,8 @@ func (s *Server) ToAdminResponse() ServerAdminResponse {
 		HasSSHPassword: s.SSHPassword != "",
 		IsSetup:        s.IsSetup,
 		IsActive:       s.IsActive,
+		DNSSubdomain:   s.DNSSubdomain,
+		DNSDomain:      s.DNSDomain,
 		LastCheckAt:    s.LastCheckAt,
 		CreatedAt:      s.CreatedAt,
 		PhoneCount:     len(s.Phones),

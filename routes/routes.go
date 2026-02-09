@@ -130,6 +130,10 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.GET("/servers/:id/firewall", handlers.GetFirewallStatus)
 			admin.POST("/servers/:id/firewall", handlers.ManageFirewall)
 
+			// DNS management
+			admin.POST("/servers/:id/dns/setup", handlers.SetupServerDNS)  // Create A record for server
+			admin.POST("/servers/:id/failover", handlers.FailoverServer)   // Redirect all phones to another server
+
 			// User management
 			admin.GET("/users", handlers.ListUsers)
 			admin.GET("/users/:id", handlers.GetUser)
