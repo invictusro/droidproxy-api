@@ -41,13 +41,13 @@ type CommonResponse struct {
 
 // Domain represents a Rage4 DNS domain
 type Domain struct {
-	ID           int64  `json:"id"`
-	Name         string `json:"name"`
-	OwnerEmail   string `json:"owner_email"`
-	Type         int    `json:"type"`
-	SubnetMask   int    `json:"subnet_mask"`
-	DefaultNS1   string `json:"default_ns1"`
-	DefaultNS2   string `json:"default_ns2"`
+	ID           int64       `json:"id"`
+	Name         string      `json:"name"`
+	OwnerEmail   string      `json:"owner_email"`
+	Type         interface{} `json:"type"` // Can be int or string depending on Rage4 API version
+	SubnetMask   int         `json:"subnet_mask"`
+	DefaultNS1   string      `json:"default_ns1"`
+	DefaultNS2   string      `json:"default_ns2"`
 }
 
 // Record represents a Rage4 DNS record
