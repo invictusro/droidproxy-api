@@ -560,12 +560,17 @@ func GetProxyConfig(c *gin.Context) {
 		return
 	}
 
+	// Generate fresh Centrifugo token
+	centrifugoToken, _ := phonecomm.GeneratePhoneToken(phone.ID.String())
+
 	c.JSON(http.StatusOK, models.ProxyConfigResponse{
 		PhoneID:         phone.ID.String(),
 		ServerIP:        phone.Server.IP,
 		ProxyPort:       phone.ProxyPort,
 		WireGuardConfig: phone.WireGuardConfig,
 		Status:          string(phone.Status),
+		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
+		CentrifugoToken: centrifugoToken,
 	})
 }
 

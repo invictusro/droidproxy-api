@@ -175,6 +175,8 @@ type ProxyConfigResponse struct {
 	ProxyPort       int    `json:"proxy_port"`
 	WireGuardConfig string `json:"wireguard_config"`
 	Status          string `json:"status"`
+	CentrifugoURL   string `json:"centrifugo_url"`
+	CentrifugoToken string `json:"centrifugo_token"`
 }
 
 // HeartbeatRequest is sent periodically from the Android app

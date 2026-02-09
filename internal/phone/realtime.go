@@ -52,7 +52,7 @@ func (r *RealtimeService) GeneratePhoneToken(phoneID string) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":     phoneID,
 		"channel": channel,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"exp":     time.Now().Add(365 * 24 * time.Hour).Unix(), // 1 year
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
