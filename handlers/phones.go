@@ -91,24 +91,12 @@ func CreatePhone(c *gin.Context) {
 		return
 	}
 
-	// Assign next available SOCKS5 port
-	proxyPort, err := getNextAvailablePort(&server)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
-		return
-	}
-
-	// Assign HTTP port (offset from SOCKS5 port range)
-	httpPort := proxyPort + 7000
-
-	// Create phone
+	// Create phone (ports are assigned when credentials are created)
 	phone := models.Phone{
-		UserID:    userID,
-		ServerID:  &serverID,
-		Name:      req.Name,
-		ProxyPort: proxyPort,
-		HTTPPort:  httpPort,
-		Status:    models.StatusPending,
+		UserID:   userID,
+		ServerID: &serverID,
+		Name:     req.Name,
+		Status:   models.StatusPending,
 	}
 
 	// Generate unique proxy subdomain and create DNS record if DNS manager is configured

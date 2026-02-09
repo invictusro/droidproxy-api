@@ -50,11 +50,26 @@ func CreateCredential(c *gin.Context) {
 		return
 	}
 
-	// Verify phone belongs to user
+	// Verify phone belongs to user (preload server for port allocation)
 	var phone models.Phone
-	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
+	}
+
+	// Assign ports if not already assigned (first credential creation)
+	if phone.ProxyPort == 0 && phone.Server != nil {
+		proxyPort, err := getNextAvailablePort(phone.Server)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
+			return
+		}
+		phone.ProxyPort = proxyPort
+		phone.HTTPPort = proxyPort + 7000
+		if err := database.DB.Save(&phone).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign ports"})
+			return
+		}
 	}
 
 	var req models.CreateCredentialRequest
