@@ -93,8 +93,9 @@ func (m *Manager) CreateProxyRecord(subdomain, serverSubdomain string) (*ProxyDN
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Build the record name: abc123def.cn (for abc123def.cn.yalx.in)
-	recordName := fmt.Sprintf("%s.%s", subdomain, m.cnamePrefix)
+	// Build the full record name: abc123def.cn.yalx.in
+	// Rage4 API requires the full domain name, not just the subdomain
+	recordName := fmt.Sprintf("%s.%s.%s", subdomain, m.cnamePrefix, m.domainName)
 
 	// CNAME target: x1.yalx.in
 	targetHost := fmt.Sprintf("%s.%s", serverSubdomain, m.domainName)
@@ -130,7 +131,8 @@ func (m *Manager) UpdateProxyRecord(recordID int64, subdomain, newServerSubdomai
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	recordName := fmt.Sprintf("%s.%s", subdomain, m.cnamePrefix)
+	// Full domain name required by Rage4 API
+	recordName := fmt.Sprintf("%s.%s.%s", subdomain, m.cnamePrefix, m.domainName)
 	newTarget := fmt.Sprintf("%s.%s", newServerSubdomain, m.domainName)
 
 	req := UpdateRecordRequest{
@@ -173,9 +175,12 @@ func (m *Manager) CreateServerRecord(subdomain, ip string) (*ServerDNSRecord, er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Full domain name required by Rage4 API
+	fullDomain := fmt.Sprintf("%s.%s", subdomain, m.domainName)
+
 	req := CreateRecordRequest{
 		DomainID: m.domainID,
-		Name:     subdomain,
+		Name:     fullDomain,
 		Content:  ip,
 		Type:     RecordTypeA,
 		TTL:      3600, // 1 hour TTL for servers
@@ -187,7 +192,6 @@ func (m *Manager) CreateServerRecord(subdomain, ip string) (*ServerDNSRecord, er
 		return nil, fmt.Errorf("failed to create server DNS record: %w", err)
 	}
 
-	fullDomain := fmt.Sprintf("%s.%s", subdomain, m.domainName)
 	log.Printf("[DNS] Created server record: %s -> %s (ID: %d)", fullDomain, ip, resp.ID)
 
 	return &ServerDNSRecord{
@@ -203,9 +207,12 @@ func (m *Manager) UpdateServerRecord(recordID int64, subdomain, newIP string) er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Full domain name required by Rage4 API
+	fullDomain := fmt.Sprintf("%s.%s", subdomain, m.domainName)
+
 	req := UpdateRecordRequest{
 		RecordID: recordID,
-		Name:     subdomain,
+		Name:     fullDomain,
 		Content:  newIP,
 		TTL:      3600,
 		Active:   true,
@@ -216,7 +223,6 @@ func (m *Manager) UpdateServerRecord(recordID int64, subdomain, newIP string) er
 		return fmt.Errorf("failed to update server DNS record: %w", err)
 	}
 
-	fullDomain := fmt.Sprintf("%s.%s", subdomain, m.domainName)
 	log.Printf("[DNS] Updated server record: %s -> %s", fullDomain, newIP)
 
 	return nil
