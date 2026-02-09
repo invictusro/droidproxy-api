@@ -47,12 +47,10 @@ func NewRealtimeService(centrifugoURL, apiKey, tokenSecret string) *RealtimeServ
 
 // GeneratePhoneToken generates a JWT token for a phone to connect to Centrifugo
 func (r *RealtimeService) GeneratePhoneToken(phoneID string) (string, error) {
-	channel := "phone:" + phoneID
-
+	// Connection token only needs sub and exp - channel is for subscription tokens
 	claims := jwt.MapClaims{
-		"sub":     phoneID,
-		"channel": channel,
-		"exp":     time.Now().Add(365 * 24 * time.Hour).Unix(), // 1 year
+		"sub": phoneID,
+		"exp": time.Now().Add(90 * 24 * time.Hour).Unix(), // 90 days
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
