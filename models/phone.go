@@ -34,6 +34,10 @@ type Phone struct {
 	ProxyDomain    string `json:"proxy_domain"`    // Full proxy domain (e.g., "abc123def.cn.yalx.in")
 	DNSRecordID    int64  `json:"-"`               // Rage4 DNS record ID for updates/deletion
 
+	// IP Rotation settings
+	RotationMode            string `gorm:"default:'off'" json:"rotation_mode"`     // 'off', 'timed', 'api'
+	RotationIntervalMinutes int    `gorm:"default:0" json:"rotation_interval_minutes"` // 2-120 minutes (when mode is 'timed')
+
 	// Relationships
 	User   User    `gorm:"foreignKey:UserID" json:"-"`
 	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
@@ -76,15 +80,29 @@ func GenerateAPIToken() string {
 // PhoneResponse is the public representation
 // Note: status, current_ip, last_seen come from Centrifugo real-time data, not database
 type PhoneResponse struct {
-	ID          uuid.UUID      `json:"id"`
-	Name        string         `json:"name"`
-	PairedAt    *time.Time     `json:"paired_at,omitempty"`
-	ProxyPort   int            `json:"proxy_port,omitempty"`  // SOCKS5 port
-	HTTPPort    int            `json:"http_port,omitempty"`   // HTTP proxy port
-	ServerIP    string         `json:"server_ip,omitempty"`   // Server IP for proxy connection
-	ProxyDomain string         `json:"proxy_domain,omitempty"` // Full proxy domain (e.g., "abc123def.cn.yalx.in")
-	Server      ServerResponse `json:"server,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
+	ID                      uuid.UUID      `json:"id"`
+	Name                    string         `json:"name"`
+	PairedAt                *time.Time     `json:"paired_at,omitempty"`
+	ProxyPort               int            `json:"proxy_port,omitempty"`  // SOCKS5 port
+	HTTPPort                int            `json:"http_port,omitempty"`   // HTTP proxy port
+	ServerIP                string         `json:"server_ip,omitempty"`   // Server IP for proxy connection
+	ProxyDomain             string         `json:"proxy_domain,omitempty"` // Full proxy domain (e.g., "abc123def.cn.yalx.in")
+	Server                  ServerResponse `json:"server,omitempty"`
+	RotationMode            string         `json:"rotation_mode"`              // 'off', 'timed', 'api'
+	RotationIntervalMinutes int            `json:"rotation_interval_minutes"`  // 2-120 minutes
+	CreatedAt               time.Time      `json:"created_at"`
+}
+
+// RotationSettingsRequest for updating rotation settings
+type RotationSettingsRequest struct {
+	RotationMode            string `json:"rotation_mode" binding:"required,oneof=off timed api"`
+	RotationIntervalMinutes int    `json:"rotation_interval_minutes"` // Required when mode is 'timed'
+}
+
+// RotationSettingsResponse for getting rotation settings
+type RotationSettingsResponse struct {
+	RotationMode            string `json:"rotation_mode"`
+	RotationIntervalMinutes int    `json:"rotation_interval_minutes"`
 }
 
 // PhoneWithPairingCode includes the pairing code (only for new phones)
@@ -97,13 +115,15 @@ type PhoneWithPairingCode struct {
 
 func (p *Phone) ToResponse() PhoneResponse {
 	resp := PhoneResponse{
-		ID:          p.ID,
-		Name:        p.Name,
-		PairedAt:    p.PairedAt,
-		ProxyPort:   p.ProxyPort,
-		HTTPPort:    p.HTTPPort,
-		ProxyDomain: p.ProxyDomain,
-		CreatedAt:   p.CreatedAt,
+		ID:                      p.ID,
+		Name:                    p.Name,
+		PairedAt:                p.PairedAt,
+		ProxyPort:               p.ProxyPort,
+		HTTPPort:                p.HTTPPort,
+		ProxyDomain:             p.ProxyDomain,
+		RotationMode:            p.RotationMode,
+		RotationIntervalMinutes: p.RotationIntervalMinutes,
+		CreatedAt:               p.CreatedAt,
 	}
 	if p.Server != nil {
 		resp.Server = p.Server.ToResponse()

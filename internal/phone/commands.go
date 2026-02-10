@@ -17,6 +17,7 @@ const (
 	CommandRestart            CommandType = "restart"
 	CommandCredentialsUpdate  CommandType = "credentials_update"
 	CommandConfigUpdate       CommandType = "config_update"
+	CommandRotationSettings   CommandType = "rotation_settings"
 )
 
 // Command represents a command sent to a phone via Centrifugo
@@ -109,6 +110,23 @@ func (c *Commander) SendConfigUpdate(phoneID string, config interface{}) error {
 	})
 }
 
+// RotationSettings represents the rotation settings for a phone
+type RotationSettings struct {
+	Mode            string `json:"mode"`             // 'off', 'timed', 'api'
+	IntervalMinutes int    `json:"interval_minutes"` // Interval in minutes for timed mode
+}
+
+// SendRotationSettings sends rotation settings to a phone
+func (c *Commander) SendRotationSettings(phoneID string, mode string, intervalMinutes int) error {
+	return c.SendCommand(phoneID, Command{
+		Command: CommandRotationSettings,
+		Data: RotationSettings{
+			Mode:            mode,
+			IntervalMinutes: intervalMinutes,
+		},
+	})
+}
+
 // Global convenience functions using the default commander
 
 // SendRotateIP sends a rotate IP command using the default commander
@@ -141,4 +159,12 @@ func SendConfigUpdate(phoneID string, config interface{}) error {
 		return fmt.Errorf("commander not initialized")
 	}
 	return defaultCommander.SendConfigUpdate(phoneID, config)
+}
+
+// SendRotationSettings sends rotation settings using the default commander
+func SendRotationSettings(phoneID string, mode string, intervalMinutes int) error {
+	if defaultCommander == nil {
+		return fmt.Errorf("commander not initialized")
+	}
+	return defaultCommander.SendRotationSettings(phoneID, mode, intervalMinutes)
 }

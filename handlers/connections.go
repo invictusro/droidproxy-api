@@ -337,6 +337,73 @@ func RegenerateRotationToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"rotation_token": token.ToResponse(config.AppConfig.APIBaseURL, true)})
 }
 
+// GetRotationSettings returns the current rotation settings for a phone
+func GetRotationSettings(c *gin.Context) {
+	userID := middleware.GetCurrentUserID(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var phone models.Phone
+	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"rotation_mode":             phone.RotationMode,
+		"rotation_interval_minutes": phone.RotationIntervalMinutes,
+	})
+}
+
+// UpdateRotationSettings updates the rotation settings for a phone
+func UpdateRotationSettings(c *gin.Context) {
+	userID := middleware.GetCurrentUserID(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var phone models.Phone
+	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	var req models.RotationSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate interval for timed mode
+	if req.RotationMode == "timed" {
+		if req.RotationIntervalMinutes < 2 || req.RotationIntervalMinutes > 120 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Rotation interval must be between 2 and 120 minutes"})
+			return
+		}
+	}
+
+	// Update settings
+	phone.RotationMode = req.RotationMode
+	phone.RotationIntervalMinutes = req.RotationIntervalMinutes
+	if err := database.DB.Save(&phone).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
+		return
+	}
+
+	// Notify phone of settings change
+	notifyPhoneRotationSettingsUpdated(phone.ID.String(), phone.RotationMode, phone.RotationIntervalMinutes)
+
+	c.JSON(http.StatusOK, gin.H{
+		"rotation_mode":             phone.RotationMode,
+		"rotation_interval_minutes": phone.RotationIntervalMinutes,
+	})
+}
+
 // RotateIPByToken handles external API rotation requests
 func RotateIPByToken(c *gin.Context) {
 	tokenStr := c.Param("token")
@@ -362,7 +429,7 @@ func RotateIPByToken(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Rotation command sent", "phone_id": token.PhoneID})
+	c.JSON(http.StatusOK, gin.H{"message": "IP rotation initiated"})
 }
 
 // PhoneCredential is the simplified credential sent to phones (SOCKS5 only)
@@ -406,6 +473,14 @@ func notifyPhoneCredentialsUpdated(phoneID string) {
 	}
 
 	phonecomm.SendCredentialsUpdate(phoneID, phoneCredentials)
+}
+
+// notifyPhoneRotationSettingsUpdated sends rotation settings to a phone via Centrifugo
+func notifyPhoneRotationSettingsUpdated(phoneID string, mode string, intervalMinutes int) {
+	if err := phonecomm.SendRotationSettings(phoneID, mode, intervalMinutes); err != nil {
+		// Log error but don't fail - phone will get settings on next sync
+		_ = err
+	}
 }
 
 // updateSocks5Forwarder sets up/updates the SOCKS5 forwarder on the server

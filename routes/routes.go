@@ -108,6 +108,10 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.GET("/phones/:id/rotation-token", handlers.GetRotationToken)
 		api.POST("/phones/:id/rotation-token/regenerate", handlers.RegenerateRotationToken)
 
+		// Rotation Settings
+		api.GET("/phones/:id/rotation-settings", handlers.GetRotationSettings)
+		api.PUT("/phones/:id/rotation-settings", handlers.UpdateRotationSettings)
+
 		// Servers (read for all, write for admins)
 		api.GET("/servers", handlers.ListServers)
 		api.GET("/servers/:id", handlers.GetServer)
