@@ -43,6 +43,9 @@ func Migrate() error {
 		&models.RotationToken{},
 		&models.PhoneGroup{},
 		&models.PhoneGroupMembership{},
+		&models.PhoneDataUsage{},
+		&models.PhoneUptimeLog{},
+		&models.PhoneDailyUptime{},
 	)
 	if err != nil {
 		return err

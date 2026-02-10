@@ -38,6 +38,10 @@ type Phone struct {
 	RotationMode            string `gorm:"default:'off'" json:"rotation_mode"`     // 'off', 'timed', 'api'
 	RotationIntervalMinutes int    `gorm:"default:0" json:"rotation_interval_minutes"` // 2-120 minutes (when mode is 'timed')
 
+	// SIM card info (updated via status updates)
+	SimCountry string `json:"sim_country"` // ISO country code (e.g., "US", "GB")
+	SimCarrier string `json:"sim_carrier"` // Carrier name
+
 	// Relationships
 	User   User    `gorm:"foreignKey:UserID" json:"-"`
 	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
@@ -90,6 +94,8 @@ type PhoneResponse struct {
 	Server                  ServerResponse `json:"server,omitempty"`
 	RotationMode            string         `json:"rotation_mode"`              // 'off', 'timed', 'api'
 	RotationIntervalMinutes int            `json:"rotation_interval_minutes"`  // 2-120 minutes
+	SimCountry              string         `json:"sim_country"`
+	SimCarrier              string         `json:"sim_carrier"`
 	CreatedAt               time.Time      `json:"created_at"`
 }
 
@@ -123,6 +129,8 @@ func (p *Phone) ToResponse() PhoneResponse {
 		ProxyDomain:             p.ProxyDomain,
 		RotationMode:            p.RotationMode,
 		RotationIntervalMinutes: p.RotationIntervalMinutes,
+		SimCountry:              p.SimCountry,
+		SimCarrier:              p.SimCarrier,
 		CreatedAt:               p.CreatedAt,
 	}
 	if p.Server != nil {

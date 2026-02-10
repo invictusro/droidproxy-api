@@ -479,6 +479,7 @@ func Heartbeat(c *gin.Context) {
 
 // CentrifugoPublishProxy handles proxied publish events from Centrifugo
 // Status data is real-time only (not stored in database)
+// Data usage and uptime are tracked for analytics
 func CentrifugoPublishProxy(c *gin.Context) {
 	var req struct {
 		Channel string `json:"channel"`
@@ -489,6 +490,10 @@ func CentrifugoPublishProxy(c *gin.Context) {
 			CurrentIP         string `json:"current_ip"`
 			ActiveConnections int    `json:"active_connections"`
 			TotalConnections  int64  `json:"total_connections"`
+			BytesIn           int64  `json:"bytes_in"`  // Bytes received since last update
+			BytesOut          int64  `json:"bytes_out"` // Bytes sent since last update
+			SimCountry        string `json:"sim_country"`
+			SimCarrier        string `json:"sim_carrier"`
 		} `json:"data"`
 	}
 
@@ -510,7 +515,22 @@ func CentrifugoPublishProxy(c *gin.Context) {
 		return
 	}
 
-	// Record stats (but don't store status in database - it's real-time data)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	// Update SIM info if provided
+	if req.Data.SimCountry != "" || req.Data.SimCarrier != "" {
+		updates := map[string]interface{}{}
+		if req.Data.SimCountry != "" {
+			updates["sim_country"] = req.Data.SimCountry
+		}
+		if req.Data.SimCarrier != "" {
+			updates["sim_carrier"] = req.Data.SimCarrier
+		}
+		database.DB.Model(&models.Phone{}).Where("id = ?", phoneID).Updates(updates)
+	}
+
+	// Record connection stats
 	if req.Data.ActiveConnections > 0 || req.Data.TotalConnections > 0 {
 		stats := models.PhoneStats{
 			PhoneID:           phoneID,
@@ -520,8 +540,121 @@ func CentrifugoPublishProxy(c *gin.Context) {
 		database.DB.Create(&stats)
 	}
 
+	// Record data usage (upsert for today)
+	if req.Data.BytesIn > 0 || req.Data.BytesOut > 0 {
+		var usage models.PhoneDataUsage
+		result := database.DB.Where("phone_id = ? AND date = ?", phoneID, today).First(&usage)
+		if result.Error != nil {
+			// Create new record for today
+			usage = models.PhoneDataUsage{
+				PhoneID:  phoneID,
+				Date:     today,
+				BytesIn:  req.Data.BytesIn,
+				BytesOut: req.Data.BytesOut,
+			}
+			database.DB.Create(&usage)
+		} else {
+			// Update existing record (add to totals)
+			database.DB.Model(&usage).Updates(map[string]interface{}{
+				"bytes_in":   usage.BytesIn + req.Data.BytesIn,
+				"bytes_out":  usage.BytesOut + req.Data.BytesOut,
+				"updated_at": now,
+			})
+		}
+	}
+
+	// Track uptime - log status changes
+	if req.Data.Status == "online" || req.Data.Status == "offline" {
+		// Check if status changed from last log
+		var lastLog models.PhoneUptimeLog
+		result := database.DB.Where("phone_id = ?", phoneID).Order("timestamp DESC").First(&lastLog)
+
+		// Only log if status changed or no previous log exists
+		if result.Error != nil || lastLog.Status != req.Data.Status {
+			uptimeLog := models.PhoneUptimeLog{
+				PhoneID:   phoneID,
+				Status:    req.Data.Status,
+				Timestamp: now,
+				IP:        req.Data.CurrentIP,
+			}
+			database.DB.Create(&uptimeLog)
+
+			// Update daily uptime for today
+			updateDailyUptime(phoneID, today)
+		}
+	}
+
 	// Return empty result to allow publish
 	c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
+}
+
+// updateDailyUptime calculates and stores daily uptime for a phone
+func updateDailyUptime(phoneID uuid.UUID, date time.Time) {
+	// Get all status logs for today
+	startOfDay := date
+	endOfDay := date.Add(24 * time.Hour)
+
+	var logs []models.PhoneUptimeLog
+	database.DB.Where("phone_id = ? AND timestamp >= ? AND timestamp < ?", phoneID, startOfDay, endOfDay).
+		Order("timestamp ASC").Find(&logs)
+
+	// Calculate online minutes
+	onlineMinutes := 0
+	var lastOnlineTime *time.Time
+
+	// Check status at start of day (carry over from previous day)
+	var prevLog models.PhoneUptimeLog
+	if database.DB.Where("phone_id = ? AND timestamp < ?", phoneID, startOfDay).
+		Order("timestamp DESC").First(&prevLog).Error == nil {
+		if prevLog.Status == "online" {
+			t := startOfDay
+			lastOnlineTime = &t
+		}
+	}
+
+	for _, log := range logs {
+		if log.Status == "online" {
+			lastOnlineTime = &log.Timestamp
+		} else if log.Status == "offline" && lastOnlineTime != nil {
+			// Calculate minutes online
+			mins := int(log.Timestamp.Sub(*lastOnlineTime).Minutes())
+			onlineMinutes += mins
+			lastOnlineTime = nil
+		}
+	}
+
+	// If still online at end of period, count until now
+	now := time.Now()
+	if lastOnlineTime != nil {
+		endTime := now
+		if now.After(endOfDay) {
+			endTime = endOfDay
+		}
+		mins := int(endTime.Sub(*lastOnlineTime).Minutes())
+		onlineMinutes += mins
+	}
+
+	// Cap at 1440 minutes (24 hours)
+	if onlineMinutes > 1440 {
+		onlineMinutes = 1440
+	}
+
+	// Upsert daily uptime record
+	var dailyUptime models.PhoneDailyUptime
+	result := database.DB.Where("phone_id = ? AND date = ?", phoneID, date).First(&dailyUptime)
+	if result.Error != nil {
+		dailyUptime = models.PhoneDailyUptime{
+			PhoneID:       phoneID,
+			Date:          date,
+			OnlineMinutes: onlineMinutes,
+		}
+		database.DB.Create(&dailyUptime)
+	} else {
+		database.DB.Model(&dailyUptime).Updates(map[string]interface{}{
+			"online_minutes": onlineMinutes,
+			"updated_at":     now,
+		})
+	}
 }
 
 // GetUserPhonesForLogin returns unpaired phones for a user (for phone app login)

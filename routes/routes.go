@@ -112,6 +112,11 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.GET("/phones/:id/rotation-settings", handlers.GetRotationSettings)
 		api.PUT("/phones/:id/rotation-settings", handlers.UpdateRotationSettings)
 
+		// Usage & Uptime
+		api.GET("/phones/:id/data-usage", handlers.GetPhoneDataUsage)
+		api.GET("/phones/:id/uptime", handlers.GetPhoneUptime)
+		api.GET("/usage/overview", handlers.GetAllPhonesUsage)
+
 		// Groups
 		api.GET("/groups", handlers.ListGroups)
 		api.POST("/groups", handlers.CreateGroup)
@@ -163,6 +168,9 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.GET("/users/:id", handlers.GetUser)
 			admin.PUT("/users/:id/role", handlers.UpdateUserRole)
 			admin.DELETE("/users/:id", handlers.DeleteUser)
+
+			// Maintenance
+			admin.POST("/cleanup/usage", handlers.CleanupOldUsageData)
 		}
 	}
 
