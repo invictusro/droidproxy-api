@@ -478,8 +478,8 @@ func Heartbeat(c *gin.Context) {
 }
 
 // CentrifugoPublishProxy handles proxied publish events from Centrifugo
-// Status data is real-time only (not stored in database)
-// Data usage and uptime are tracked for analytics
+// - "heartbeat" type: lightweight, every 10s, just passes through for dashboard (no DB writes)
+// - "status" type: full update, every 5m, records analytics to database
 func CentrifugoPublishProxy(c *gin.Context) {
 	var req struct {
 		Channel string `json:"channel"`
@@ -503,7 +503,13 @@ func CentrifugoPublishProxy(c *gin.Context) {
 		return
 	}
 
-	// Only process status updates for stats recording
+	// Heartbeat: lightweight update, just pass through for dashboard (no DB writes)
+	if req.Data.Type == "heartbeat" {
+		c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
+		return
+	}
+
+	// Only process full status updates for analytics recording
 	if req.Data.Type != "status" || req.Data.PhoneID == "" {
 		c.JSON(http.StatusOK, gin.H{"result": gin.H{}})
 		return
