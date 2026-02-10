@@ -112,6 +112,22 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.GET("/phones/:id/rotation-settings", handlers.GetRotationSettings)
 		api.PUT("/phones/:id/rotation-settings", handlers.UpdateRotationSettings)
 
+		// Groups
+		api.GET("/groups", handlers.ListGroups)
+		api.POST("/groups", handlers.CreateGroup)
+		api.GET("/groups/:id", handlers.GetGroup)
+		api.PUT("/groups/:id", handlers.UpdateGroup)
+		api.DELETE("/groups/:id", handlers.DeleteGroup)
+		api.POST("/groups/:id/phones", handlers.AddPhonesToGroup)
+		api.DELETE("/groups/:id/phones/:phoneId", handlers.RemovePhoneFromGroup)
+
+		// Mass Actions
+		api.POST("/phones/actions/mass-rotate", handlers.MassRotateIP)
+		api.POST("/phones/actions/mass-rotation-settings", handlers.MassUpdateRotationSettings)
+		api.POST("/phones/actions/mass-credentials", handlers.MassCreateCredentials)
+		api.POST("/phones/actions/mass-delete", handlers.MassDeletePhones)
+		api.POST("/phones/actions/export", handlers.ExportProxies)
+
 		// Servers (read for all, write for admins)
 		api.GET("/servers", handlers.ListServers)
 		api.GET("/servers/:id", handlers.GetServer)
