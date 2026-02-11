@@ -163,6 +163,10 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.POST("/servers/:id/dns/setup", handlers.SetupServerDNS)  // Create A record for server
 			admin.POST("/servers/:id/failover", handlers.FailoverServer)   // Redirect all phones to another server
 
+			// Hub Agent management
+			admin.GET("/servers/:id/telemetry", handlers.GetServerTelemetry) // Get real-time telemetry from hub-agent
+			admin.POST("/servers/:id/provision", handlers.ProvisionServer)   // Install hub-agent via SSH
+
 			// User management
 			admin.GET("/users", handlers.ListUsers)
 			admin.GET("/users/:id", handlers.GetUser)

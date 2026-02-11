@@ -802,3 +802,133 @@ func SetupServerDNS(c *gin.Context) {
 		"server":     server.ToAdminResponse(),
 	})
 }
+
+// GetServerTelemetry fetches real-time telemetry from the hub-agent (admin only)
+func GetServerTelemetry(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	var server models.HubServer
+	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+
+	if server.HubAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Hub Agent not configured for this server"})
+		return
+	}
+
+	// Fetch telemetry from hub-agent
+	telemetry, err := infra.GetHubAgentTelemetry(server.IP, server.HubAPIPort, server.HubAPIKey)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":  "Failed to fetch telemetry: " + err.Error(),
+			"status": "offline",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, telemetry)
+}
+
+// ProvisionServerRequest is the request body for provisioning a server
+type ProvisionServerRequest struct {
+	SSHHost      string `json:"ssh_host"`
+	SSHPort      int    `json:"ssh_port"`
+	SSHUser      string `json:"ssh_user"`
+	SSHPassword  string `json:"ssh_password" binding:"required"`
+	HubBinaryURL string `json:"hub_binary_url"`
+}
+
+// ProvisionServer installs hub-agent on a server via SSH (admin only)
+func ProvisionServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	var req ProvisionServerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var server models.HubServer
+	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+
+	// Use provided values or defaults from server
+	sshHost := req.SSHHost
+	if sshHost == "" {
+		sshHost = server.IP
+	}
+	sshPort := req.SSHPort
+	if sshPort == 0 {
+		sshPort = server.SSHPort
+		if sshPort == 0 {
+			sshPort = 22
+		}
+	}
+	sshUser := req.SSHUser
+	if sshUser == "" {
+		sshUser = server.SSHUser
+		if sshUser == "" {
+			sshUser = "root"
+		}
+	}
+
+	hubBinaryURL := req.HubBinaryURL
+	if hubBinaryURL == "" {
+		hubBinaryURL = "https://github.com/invictusro/droidproxy-hub-agent/releases/latest/download/hub-agent-linux-amd64"
+	}
+
+	hubAPIPort := server.HubAPIPort
+	if hubAPIPort == 0 {
+		hubAPIPort = 8081
+	}
+
+	// Connect via SSH
+	client := infra.NewSSHClient(sshHost, sshPort, sshUser, req.SSHPassword)
+	if err := client.Connect(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "SSH connection failed: " + err.Error()})
+		return
+	}
+	defer client.Close()
+
+	// Generate API key for hub-agent
+	apiKey := infra.GenerateAPIKey()
+
+	// Provision hub-agent
+	provisioner := infra.NewHubAgentProvisioner(client)
+	if err := provisioner.Install(hubBinaryURL, server.ID.String(), apiKey, hubAPIPort); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision hub-agent: " + err.Error()})
+		return
+	}
+
+	// Update server with hub-agent details
+	server.HubAPIKey = apiKey
+	server.HubAPIPort = hubAPIPort
+	server.SSHPassword = req.SSHPassword // Save for future use
+	server.SSHPort = sshPort
+	server.SSHUser = sshUser
+
+	if err := database.DB.Save(&server).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update server"})
+		return
+	}
+
+	log.Printf("[ProvisionServer] Hub Agent installed on %s (%s:%d)", server.Name, server.IP, hubAPIPort)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "Hub Agent installed successfully",
+		"hub_api_port": hubAPIPort,
+		"server":       server.ToAdminResponse(),
+	})
+}
