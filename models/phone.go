@@ -13,7 +13,7 @@ import (
 type Phone struct {
 	ID              uuid.UUID   `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	UserID          uuid.UUID   `gorm:"type:uuid;not null" json:"user_id"`
-	ServerID        *uuid.UUID  `gorm:"type:uuid" json:"server_id"`
+	HubServerID     *uuid.UUID  `gorm:"type:uuid;column:hub_server_id" json:"hub_server_id"`
 	Name            string      `gorm:"not null" json:"name"`
 	PairingCode     string      `gorm:"uniqueIndex" json:"-"`
 	PairingPIN      string      `json:"-"` // 4-digit PIN for QR pairing
@@ -43,8 +43,8 @@ type Phone struct {
 	SimCarrier string `json:"sim_carrier"` // Carrier name
 
 	// Relationships
-	User   User    `gorm:"foreignKey:UserID" json:"-"`
-	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
+	User      User       `gorm:"foreignKey:UserID" json:"-"`
+	HubServer *HubServer `gorm:"foreignKey:HubServerID" json:"hub_server,omitempty"`
 }
 
 func (p *Phone) BeforeCreate(tx *gorm.DB) error {
@@ -84,19 +84,19 @@ func GenerateAPIToken() string {
 // PhoneResponse is the public representation
 // Note: status, current_ip, last_seen come from Centrifugo real-time data, not database
 type PhoneResponse struct {
-	ID                      uuid.UUID      `json:"id"`
-	Name                    string         `json:"name"`
-	PairedAt                *time.Time     `json:"paired_at,omitempty"`
-	ProxyPort               int            `json:"proxy_port,omitempty"`  // SOCKS5 port
-	HTTPPort                int            `json:"http_port,omitempty"`   // HTTP proxy port
-	ServerIP                string         `json:"server_ip,omitempty"`   // Server IP for proxy connection
-	ProxyDomain             string         `json:"proxy_domain,omitempty"` // Full proxy domain (e.g., "abc123def.cn.yalx.in")
-	Server                  ServerResponse `json:"server,omitempty"`
-	RotationMode            string         `json:"rotation_mode"`              // 'off', 'timed', 'api'
-	RotationIntervalMinutes int            `json:"rotation_interval_minutes"`  // 2-120 minutes
-	SimCountry              string         `json:"sim_country"`
-	SimCarrier              string         `json:"sim_carrier"`
-	CreatedAt               time.Time      `json:"created_at"`
+	ID                      uuid.UUID         `json:"id"`
+	Name                    string            `json:"name"`
+	PairedAt                *time.Time        `json:"paired_at,omitempty"`
+	ProxyPort               int               `json:"proxy_port,omitempty"`  // SOCKS5 port
+	HTTPPort                int               `json:"http_port,omitempty"`   // HTTP proxy port
+	HubServerIP             string            `json:"hub_server_ip,omitempty"` // Hub server IP for proxy connection
+	ProxyDomain             string            `json:"proxy_domain,omitempty"` // Full proxy domain (e.g., "abc123def.cn.yalx.in")
+	HubServer               HubServerResponse `json:"hub_server,omitempty"`
+	RotationMode            string            `json:"rotation_mode"`              // 'off', 'timed', 'api'
+	RotationIntervalMinutes int               `json:"rotation_interval_minutes"`  // 2-120 minutes
+	SimCountry              string            `json:"sim_country"`
+	SimCarrier              string            `json:"sim_carrier"`
+	CreatedAt               time.Time         `json:"created_at"`
 }
 
 // RotationSettingsRequest for updating rotation settings
@@ -133,9 +133,9 @@ func (p *Phone) ToResponse() PhoneResponse {
 		SimCarrier:              p.SimCarrier,
 		CreatedAt:               p.CreatedAt,
 	}
-	if p.Server != nil {
-		resp.Server = p.Server.ToResponse()
-		resp.ServerIP = p.Server.IP // Include server IP for proxy connection
+	if p.HubServer != nil {
+		resp.HubServer = p.HubServer.ToResponse()
+		resp.HubServerIP = p.HubServer.IP // Include hub server IP for proxy connection
 	}
 	return resp
 }

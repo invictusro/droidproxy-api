@@ -14,34 +14,42 @@ import (
 	"github.com/google/uuid"
 )
 
-// CreateServerRequest is the request body for creating a server
-type CreateServerRequest struct {
+// CreateHubServerRequest is the request body for creating a hub server
+type CreateHubServerRequest struct {
 	Name           string `json:"name" binding:"required"`
 	Location       string `json:"location" binding:"required"`
 	IP             string `json:"ip" binding:"required"`
 	WireGuardPort  int    `json:"wireguard_port"`
 	ProxyPortStart int    `json:"proxy_port_start"`
 	ProxyPortEnd   int    `json:"proxy_port_end"`
+	HubAPIKey      string `json:"hub_api_key"`  // Hub Agent API key
+	HubAPIPort     int    `json:"hub_api_port"` // Hub Agent API port
 	SSHPort        int    `json:"ssh_port"`
 	SSHUser        string `json:"ssh_user"`
 	SSHPassword    string `json:"ssh_password"`
 	DNSSubdomain   string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
 }
 
-// UpdateServerRequest is the request body for updating a server
-type UpdateServerRequest struct {
+// UpdateHubServerRequest is the request body for updating a hub server
+type UpdateHubServerRequest struct {
 	Name           string `json:"name"`
 	Location       string `json:"location"`
 	IP             string `json:"ip"`
 	WireGuardPort  int    `json:"wireguard_port"`
 	ProxyPortStart int    `json:"proxy_port_start"`
 	ProxyPortEnd   int    `json:"proxy_port_end"`
+	HubAPIKey      string `json:"hub_api_key"`
+	HubAPIPort     int    `json:"hub_api_port"`
 	SSHPort        int    `json:"ssh_port"`
 	SSHUser        string `json:"ssh_user"`
 	SSHPassword    string `json:"ssh_password"`
 	IsActive       *bool  `json:"is_active"`
 	DNSSubdomain   string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
 }
+
+// Legacy type aliases for backwards compatibility
+type CreateServerRequest = CreateHubServerRequest
+type UpdateServerRequest = UpdateHubServerRequest
 
 // FailoverRequest is the request body for server failover
 type FailoverRequest struct {
@@ -67,12 +75,12 @@ type FirewallRuleRequest struct {
 	Action   string `json:"action" binding:"required"` // allow, deny, delete
 }
 
-// ListServers returns all servers
+// ListServers returns all hub servers
 // Regular users see only location, admins see full details
 func ListServers(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 
-	var servers []models.Server
+	var servers []models.HubServer
 	if err := database.DB.Preload("Phones").Find(&servers).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch servers"})
 		return
@@ -80,14 +88,14 @@ func ListServers(c *gin.Context) {
 
 	if user.IsAdmin() {
 		// Return full details for admins
-		responses := make([]models.ServerAdminResponse, len(servers))
+		responses := make([]models.HubServerAdminResponse, len(servers))
 		for i, server := range servers {
 			responses[i] = server.ToAdminResponse()
 		}
 		c.JSON(http.StatusOK, gin.H{"servers": responses})
 	} else {
 		// Return limited info for regular users
-		responses := make([]models.ServerResponse, len(servers))
+		responses := make([]models.HubServerResponse, len(servers))
 		for i, server := range servers {
 			responses[i] = server.ToResponse()
 		}
@@ -95,21 +103,23 @@ func ListServers(c *gin.Context) {
 	}
 }
 
-// CreateServer creates a new server (admin only)
+// CreateServer creates a new hub server (admin only)
 func CreateServer(c *gin.Context) {
-	var req CreateServerRequest
+	var req CreateHubServerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	server := models.Server{
+	server := models.HubServer{
 		Name:           req.Name,
 		Location:       req.Location,
 		IP:             req.IP,
 		WireGuardPort:  req.WireGuardPort,
 		ProxyPortStart: req.ProxyPortStart,
 		ProxyPortEnd:   req.ProxyPortEnd,
+		HubAPIKey:      req.HubAPIKey,
+		HubAPIPort:     req.HubAPIPort,
 		SSHPort:        req.SSHPort,
 		SSHUser:        req.SSHUser,
 		SSHPassword:    req.SSHPassword,
@@ -122,10 +132,13 @@ func CreateServer(c *gin.Context) {
 		server.WireGuardPort = 51820
 	}
 	if server.ProxyPortStart == 0 {
-		server.ProxyPortStart = 10001
+		server.ProxyPortStart = 20001
 	}
 	if server.ProxyPortEnd == 0 {
-		server.ProxyPortEnd = 10100
+		server.ProxyPortEnd = 20100
+	}
+	if server.HubAPIPort == 0 {
+		server.HubAPIPort = 8081
 	}
 	if server.SSHPort == 0 {
 		server.SSHPort = 22
@@ -165,7 +178,7 @@ func CreateServer(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"server": server.ToAdminResponse()})
 }
 
-// GetServer returns a specific server
+// GetServer returns a specific hub server
 func GetServer(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -175,7 +188,7 @@ func GetServer(c *gin.Context) {
 
 	user := middleware.GetCurrentUser(c)
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.Preload("Phones").First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -188,7 +201,7 @@ func GetServer(c *gin.Context) {
 	}
 }
 
-// UpdateServer updates a server (admin only)
+// UpdateServer updates a hub server (admin only)
 func UpdateServer(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -196,13 +209,13 @@ func UpdateServer(c *gin.Context) {
 		return
 	}
 
-	var req UpdateServerRequest
+	var req UpdateHubServerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -236,6 +249,12 @@ func UpdateServer(c *gin.Context) {
 	}
 	if req.SSHUser != "" {
 		server.SSHUser = req.SSHUser
+	}
+	if req.HubAPIKey != "" {
+		server.HubAPIKey = req.HubAPIKey
+	}
+	if req.HubAPIPort != 0 {
+		server.HubAPIPort = req.HubAPIPort
 	}
 	if req.SSHPassword != "" {
 		server.SSHPassword = req.SSHPassword
@@ -287,7 +306,7 @@ func UpdateServer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"server": server.ToAdminResponse()})
 }
 
-// DeleteServer removes a server (admin only)
+// DeleteServer removes a hub server (admin only)
 func DeleteServer(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -297,13 +316,13 @@ func DeleteServer(c *gin.Context) {
 
 	// Check if server has phones
 	var phoneCount int64
-	database.DB.Model(&models.Phone{}).Where("server_id = ?", serverID).Count(&phoneCount)
+	database.DB.Model(&models.Phone{}).Where("hub_server_id = ?", serverID).Count(&phoneCount)
 	if phoneCount > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete server with active phones"})
 		return
 	}
 
-	result := database.DB.Delete(&models.Server{}, "id = ?", serverID)
+	result := database.DB.Delete(&models.HubServer{}, "id = ?", serverID)
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -312,8 +331,8 @@ func DeleteServer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Server deleted"})
 }
 
-// getSSHClient creates an SSH client for a server
-func getSSHClient(server *models.Server) (*infra.SSHClient, error) {
+// getSSHClient creates an SSH client for a hub server
+func getSSHClient(server *models.HubServer) (*infra.SSHClient, error) {
 	if server.SSHPassword == "" {
 		return nil, nil
 	}
@@ -324,7 +343,7 @@ func getSSHClient(server *models.Server) (*infra.SSHClient, error) {
 	return client, nil
 }
 
-// TestSSHConnection tests SSH connection to a server (admin only)
+// TestSSHConnection tests SSH connection to a hub server (admin only)
 func TestSSHConnection(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -332,7 +351,7 @@ func TestSSHConnection(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -358,7 +377,7 @@ func TestSSHConnection(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "SSH connection successful"})
 }
 
-// RunSSHCommand runs a command on a server (admin only)
+// RunSSHCommand runs a command on a hub server (admin only)
 func RunSSHCommand(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -372,7 +391,7 @@ func RunSSHCommand(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -398,7 +417,7 @@ func RunSSHCommand(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": result})
 }
 
-// SetupServer runs the full server setup (admin only)
+// SetupServer runs the full hub server setup (admin only)
 func SetupServer(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -406,7 +425,7 @@ func SetupServer(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -452,7 +471,7 @@ func StartHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -515,7 +534,7 @@ func StopHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -556,7 +575,7 @@ func ManageFirewall(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -604,7 +623,7 @@ func GetFirewallStatus(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return
@@ -653,14 +672,14 @@ func FailoverServer(c *gin.Context) {
 	}
 
 	// Get source server
-	var sourceServer models.Server
+	var sourceServer models.HubServer
 	if err := database.DB.First(&sourceServer, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Source server not found"})
 		return
 	}
 
 	// Get target server
-	var targetServer models.Server
+	var targetServer models.HubServer
 	if err := database.DB.First(&targetServer, "id = ?", targetServerID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Target server not found"})
 		return
@@ -680,7 +699,7 @@ func FailoverServer(c *gin.Context) {
 
 	// Get all phones on the source server that have DNS records
 	var phones []models.Phone
-	if err := database.DB.Where("server_id = ? AND dns_record_id != 0", serverID).Find(&phones).Error; err != nil {
+	if err := database.DB.Where("hub_server_id = ? AND dns_record_id != 0", serverID).Find(&phones).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch phones"})
 		return
 	}
@@ -741,7 +760,7 @@ func SetupServerDNS(c *gin.Context) {
 		return
 	}
 
-	var server models.Server
+	var server models.HubServer
 	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 		return

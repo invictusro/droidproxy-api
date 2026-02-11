@@ -36,7 +36,7 @@ func Migrate() error {
 
 	err := DB.AutoMigrate(
 		&models.User{},
-		&models.Server{},
+		&models.HubServer{},
 		&models.Phone{},
 		&models.PhoneStats{},
 		&models.ConnectionCredential{},

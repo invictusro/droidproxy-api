@@ -20,8 +20,8 @@ import (
 
 // CreatePhoneRequest is the request body for creating a phone
 type CreatePhoneRequest struct {
-	Name     string `json:"name" binding:"required"`
-	ServerID string `json:"server_id" binding:"required"`
+	Name        string `json:"name" binding:"required"`
+	HubServerID string `json:"hub_server_id" binding:"required"`
 }
 
 // PhoneWithCredential extends PhoneResponse with first credential info
@@ -43,7 +43,7 @@ func ListPhones(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 
 	var phones []models.Phone
-	if err := database.DB.Preload("Server").Where("user_id = ?", userID).Find(&phones).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("user_id = ?", userID).Find(&phones).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch phones"})
 		return
 	}
@@ -79,34 +79,34 @@ func CreatePhone(c *gin.Context) {
 	}
 
 	userID := middleware.GetCurrentUserID(c)
-	serverID, err := uuid.Parse(req.ServerID)
+	hubServerID, err := uuid.Parse(req.HubServerID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid hub server ID"})
 		return
 	}
 
-	// Verify server exists
-	var server models.Server
-	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+	// Verify hub server exists
+	var hubServer models.HubServer
+	if err := database.DB.First(&hubServer, "id = ?", hubServerID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Hub server not found"})
 		return
 	}
 
 	// Create phone (ports are assigned when credentials are created)
 	phone := models.Phone{
-		UserID:   userID,
-		ServerID: &serverID,
-		Name:     req.Name,
+		UserID:      userID,
+		HubServerID: &hubServerID,
+		Name:        req.Name,
 	}
 
 	// Generate unique proxy subdomain and create DNS record if DNS manager is configured
 	dnsManager := dns.GetManager()
-	if dnsManager != nil && server.DNSSubdomain != "" {
+	if dnsManager != nil && hubServer.DNSSubdomain != "" {
 		// Generate unique subdomain for this proxy
 		proxySubdomain := dns.GenerateProxySubdomain()
 
-		// Create CNAME record pointing to server's A record
-		dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, server.DNSSubdomain)
+		// Create CNAME record pointing to hub server's A record
+		dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, hubServer.DNSSubdomain)
 		if err != nil {
 			log.Printf("[CreatePhone] Failed to create DNS record: %v", err)
 			// Continue without DNS - not a fatal error
@@ -150,7 +150,7 @@ func GetPhone(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 
 	var phone models.Phone
-	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
 	}
@@ -169,7 +169,7 @@ func SetupPhoneDNS(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 
 	var phone models.Phone
-	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
 	}
@@ -181,7 +181,7 @@ func SetupPhoneDNS(c *gin.Context) {
 	}
 
 	// Check if server has DNS configured
-	if phone.Server == nil || phone.Server.DNSSubdomain == "" {
+	if phone.HubServer == nil || phone.HubServer.DNSSubdomain == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Server does not have DNS configured. Set up server DNS first."})
 		return
 	}
@@ -196,7 +196,7 @@ func SetupPhoneDNS(c *gin.Context) {
 	proxySubdomain := dns.GenerateProxySubdomain()
 
 	// Create CNAME record pointing to server's A record
-	dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, phone.Server.DNSSubdomain)
+	dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, phone.HubServer.DNSSubdomain)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create DNS record: " + err.Error()})
 		return
@@ -234,7 +234,7 @@ func DeletePhone(c *gin.Context) {
 
 	// First, get the phone with server for cleanup
 	var phone models.Phone
-	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
 	}
@@ -356,7 +356,7 @@ func PairPhone(c *gin.Context) {
 	}
 
 	var phone models.Phone
-	if err := database.DB.Preload("Server").Where("pairing_code = ?", req.PairingCode).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("pairing_code = ?", req.PairingCode).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid pairing code"})
 		return
 	}
@@ -415,8 +415,8 @@ func PairPhone(c *gin.Context) {
 
 	// Get server IP for proxy connection
 	serverIP := ""
-	if phone.Server != nil {
-		serverIP = phone.Server.IP
+	if phone.HubServer != nil {
+		serverIP = phone.HubServer.IP
 	}
 
 	c.JSON(http.StatusOK, models.PairingResponse{
@@ -679,13 +679,13 @@ func GetUserPhonesForLogin(c *gin.Context) {
 
 	// Get unpaired phones for this user
 	var phones []models.Phone
-	database.DB.Preload("Server").Where("user_id = ? AND paired_at IS NULL", user.ID).Find(&phones)
+	database.DB.Preload("HubServer").Where("user_id = ? AND paired_at IS NULL", user.ID).Find(&phones)
 
 	phoneInfos := make([]models.PhoneLoginInfo, len(phones))
 	for i, p := range phones {
 		serverName := ""
-		if p.Server != nil {
-			serverName = p.Server.Name
+		if p.HubServer != nil {
+			serverName = p.HubServer.Name
 		}
 		phoneInfos[i] = models.PhoneLoginInfo{
 			ID:          p.ID.String(),
@@ -735,7 +735,7 @@ func PhoneLogin(c *gin.Context) {
 	}
 
 	var phone models.Phone
-	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, user.ID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, user.ID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
 	}
@@ -795,8 +795,8 @@ func PhoneLogin(c *gin.Context) {
 
 	// Get server IP for proxy connection
 	serverIP := ""
-	if phone.Server != nil {
-		serverIP = phone.Server.IP
+	if phone.HubServer != nil {
+		serverIP = phone.HubServer.IP
 	}
 
 	c.JSON(http.StatusOK, models.PairingResponse{
@@ -821,7 +821,7 @@ func GetProxyConfig(c *gin.Context) {
 	}
 
 	// Ensure server is loaded
-	if phone.Server == nil {
+	if phone.HubServer == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No server assigned to phone"})
 		return
 	}
@@ -831,7 +831,7 @@ func GetProxyConfig(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.ProxyConfigResponse{
 		PhoneID:         phone.ID.String(),
-		ServerIP:        phone.Server.IP,
+		ServerIP:        phone.HubServer.IP,
 		ProxyPort:       phone.ProxyPort,
 		WireGuardConfig: phone.WireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
@@ -903,9 +903,9 @@ func GetPhoneCredentials(c *gin.Context) {
 
 // Helper functions
 
-func getNextAvailablePort(server *models.Server) (int, error) {
+func getNextAvailablePort(server *models.HubServer) (int, error) {
 	var usedPorts []int
-	database.DB.Model(&models.Phone{}).Where("server_id = ?", server.ID).Pluck("proxy_port", &usedPorts)
+	database.DB.Model(&models.Phone{}).Where("hub_server_id = ?", server.ID).Pluck("proxy_port", &usedPorts)
 
 	usedSet := make(map[int]bool)
 	for _, p := range usedPorts {
@@ -930,7 +930,7 @@ func getNextAvailablePort(server *models.Server) (int, error) {
 }
 
 func generateWireGuardConfig(phone *models.Phone) string {
-	if phone.Server == nil {
+	if phone.HubServer == nil {
 		return ""
 	}
 
@@ -945,14 +945,14 @@ func generateWireGuardConfig(phone *models.Phone) string {
 	phone.WireGuardPublicKey = keyPair.PublicKey
 
 	// Get server's WireGuard public key (should be stored on server record)
-	serverPublicKey := phone.Server.WireGuardPublicKey
+	serverPublicKey := phone.HubServer.WireGuardPublicKey
 	if serverPublicKey == "" {
 		// Fallback: use a placeholder if server key not set
 		serverPublicKey = "SERVER_KEY_NOT_CONFIGURED"
 	}
 
 	// Get next available WireGuard IP from server
-	wireGuardIP, err := getNextWireGuardIP(phone.Server)
+	wireGuardIP, err := getNextWireGuardIP(phone.HubServer)
 	if err != nil {
 		log.Printf("[WireGuard] Failed to allocate IP: %v", err)
 		return ""
@@ -960,7 +960,7 @@ func generateWireGuardConfig(phone *models.Phone) string {
 	phone.WireGuardIP = wireGuardIP
 
 	// Add this phone as a WireGuard peer on the server via SSH
-	go addWireGuardPeerToServer(phone.Server, keyPair.PublicKey, wireGuardIP)
+	go addWireGuardPeerToServer(phone.HubServer, keyPair.PublicKey, wireGuardIP)
 
 	return fmt.Sprintf(`[Interface]
 PrivateKey = %s
@@ -972,16 +972,16 @@ PublicKey = %s
 Endpoint = %s:%d
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
-`, keyPair.PrivateKey, wireGuardIP, serverPublicKey, phone.Server.IP, phone.Server.WireGuardPort)
+`, keyPair.PrivateKey, wireGuardIP, serverPublicKey, phone.HubServer.IP, phone.HubServer.WireGuardPort)
 }
 
-// getNextWireGuardIP finds the next available WireGuard IP for a server
+// getNextWireGuardIP finds the next available WireGuard IP for a hub server
 // Uses 10.66.0.0/16 subnet (server is 10.66.0.1)
-// Range: 10.66.0.2 - 10.66.255.254 = 65,533 phones per server
-func getNextWireGuardIP(server *models.Server) (string, error) {
-	// Get all used WireGuard IPs for this server
+// Range: 10.66.0.2 - 10.66.255.254 = 65,533 phones per hub server
+func getNextWireGuardIP(server *models.HubServer) (string, error) {
+	// Get all used WireGuard IPs for this hub server
 	var usedIPs []string
-	database.DB.Model(&models.Phone{}).Where("server_id = ?", server.ID).Pluck("wire_guard_ip", &usedIPs)
+	database.DB.Model(&models.Phone{}).Where("hub_server_id = ?", server.ID).Pluck("wire_guard_ip", &usedIPs)
 
 	usedSet := make(map[string]bool)
 	for _, ip := range usedIPs {
@@ -1008,8 +1008,8 @@ func getNextWireGuardIP(server *models.Server) (string, error) {
 	return "", fmt.Errorf("no available WireGuard IPs on server %s (all 65,533 IPs exhausted)", server.Name)
 }
 
-// addWireGuardPeerToServer adds the phone as a WireGuard peer on the server
-func addWireGuardPeerToServer(server *models.Server, publicKey, ip string) {
+// addWireGuardPeerToServer adds the phone as a WireGuard peer on the hub server
+func addWireGuardPeerToServer(server *models.HubServer, publicKey, ip string) {
 	if server.SSHPassword == "" {
 		return // No SSH credentials configured
 	}
@@ -1031,13 +1031,13 @@ func addWireGuardPeerToServer(server *models.Server, publicKey, ip string) {
 
 // cleanupPhoneServerResources removes GOST forwarder, route, and WireGuard peer for a phone
 func cleanupPhoneServerResources(phone *models.Phone) {
-	if phone.Server == nil || phone.Server.SSHPassword == "" {
+	if phone.HubServer == nil || phone.HubServer.SSHPassword == "" {
 		return // No server or SSH credentials configured
 	}
 
-	client := infra.NewSSHClient(phone.Server.IP, phone.Server.SSHPort, phone.Server.SSHUser, phone.Server.SSHPassword)
+	client := infra.NewSSHClient(phone.HubServer.IP, phone.HubServer.SSHPort, phone.HubServer.SSHUser, phone.HubServer.SSHPassword)
 	if err := client.Connect(); err != nil {
-		log.Printf("[Cleanup] Failed to connect to server %s: %v", phone.Server.Name, err)
+		log.Printf("[Cleanup] Failed to connect to server %s: %v", phone.HubServer.Name, err)
 		return
 	}
 	defer client.Close()

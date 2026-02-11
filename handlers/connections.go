@@ -52,14 +52,14 @@ func CreateCredential(c *gin.Context) {
 
 	// Verify phone belongs to user (preload server for port allocation)
 	var phone models.Phone
-	if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
 		return
 	}
 
 	// Assign ports if not already assigned (first credential creation)
-	if phone.ProxyPort == 0 && phone.Server != nil {
-		proxyPort, err := getNextAvailablePort(phone.Server)
+	if phone.ProxyPort == 0 && phone.HubServer != nil {
+		proxyPort, err := getNextAvailablePort(phone.HubServer)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
 			return
@@ -128,7 +128,7 @@ func CreateCredential(c *gin.Context) {
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
 	// Load server relationship for proxy setup
-	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
 
 	// Update SOCKS5 forwarder on server if this credential supports SOCKS5
 	if credential.ProxyType == models.ProxyTypeSOCKS5 || credential.ProxyType == models.ProxyTypeBoth {
@@ -225,7 +225,7 @@ func UpdateCredential(c *gin.Context) {
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
 	// Update proxies on server
-	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
 	go updateSocks5Forwarder(&phone)
 	go updateHTTPProxyCredentials(&phone)
 
@@ -263,7 +263,7 @@ func DeleteCredential(c *gin.Context) {
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
 	// Update proxies on server
-	database.DB.Preload("Server").First(&phone, "id = ?", phone.ID)
+	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
 	go updateSocks5Forwarder(&phone)
 	go updateHTTPProxyCredentials(&phone)
 
@@ -486,13 +486,13 @@ func notifyPhoneRotationSettingsUpdated(phoneID string, mode string, intervalMin
 // updateSocks5Forwarder sets up/updates the SOCKS5 forwarder on the server
 // This forwards external connections from server:socks5Port to phone:1080 via WireGuard
 func updateSocks5Forwarder(phone *models.Phone) error {
-	if phone.ServerID == nil || phone.ProxyPort == 0 || phone.WireGuardIP == "" {
+	if phone.HubServerID == nil || phone.ProxyPort == 0 || phone.WireGuardIP == "" {
 		return nil // No server, port, or WireGuard IP configured
 	}
 
 	// Get server
-	var server models.Server
-	if err := database.DB.First(&server, "id = ?", phone.ServerID).Error; err != nil {
+	var server models.HubServer
+	if err := database.DB.First(&server, "id = ?", phone.HubServerID).Error; err != nil {
 		return err
 	}
 
@@ -536,13 +536,13 @@ func updateSocks5Forwarder(phone *models.Phone) error {
 
 // updateHTTPProxyCredentials updates the HTTP proxy on the server with HTTP-compatible credentials
 func updateHTTPProxyCredentials(phone *models.Phone) error {
-	if phone.ServerID == nil || phone.HTTPPort == 0 {
+	if phone.HubServerID == nil || phone.HTTPPort == 0 {
 		return nil // No server or HTTP port configured
 	}
 
 	// Get server
-	var server models.Server
-	if err := database.DB.First(&server, "id = ?", phone.ServerID).Error; err != nil {
+	var server models.HubServer
+	if err := database.DB.First(&server, "id = ?", phone.HubServerID).Error; err != nil {
 		return err
 	}
 

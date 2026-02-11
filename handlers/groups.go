@@ -434,7 +434,7 @@ func MassCreateCredentials(c *gin.Context) {
 
 		// Verify phone belongs to user
 		var phone models.Phone
-		if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("Phone not found: %s", phoneIDStr))
 			continue
@@ -459,8 +459,8 @@ func MassCreateCredentials(c *gin.Context) {
 		}
 
 		// Assign ports if this is the first credential
-		if phone.ProxyPort == 0 && phone.Server != nil {
-			assignPortsForPhone(&phone, phone.Server)
+		if phone.ProxyPort == 0 && phone.HubServer != nil {
+			assignPortsForPhone(&phone, phone.HubServer)
 			database.DB.Save(&phone)
 		}
 
@@ -499,7 +499,7 @@ func MassDeletePhones(c *gin.Context) {
 
 		// Verify phone belongs to user
 		var phone models.Phone
-		if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("Phone not found: %s", phoneIDStr))
 			continue
@@ -558,7 +558,7 @@ func ExportProxies(c *gin.Context) {
 
 		// Get phone with server
 		var phone models.Phone
-		if err := database.DB.Preload("Server").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 			continue
 		}
 
@@ -601,8 +601,8 @@ func ExportProxies(c *gin.Context) {
 		host := ""
 		if p.Phone.ProxyDomain != "" {
 			host = p.Phone.ProxyDomain
-		} else if p.Phone.Server != nil {
-			host = p.Phone.Server.IP
+		} else if p.Phone.HubServer != nil {
+			host = p.Phone.HubServer.IP
 		}
 
 		port := p.Phone.ProxyPort
@@ -680,12 +680,12 @@ func ExportProxies(c *gin.Context) {
 }
 
 // Helper function to assign ports (duplicated from connections.go for now)
-func assignPortsForPhone(phone *models.Phone, server *models.Server) {
+func assignPortsForPhone(phone *models.Phone, server *models.HubServer) {
 	// Find the next available port
 	var maxPort int
 	database.DB.Model(&models.Phone{}).
-		Where("server_id = ?", server.ID).
-		Select("COALESCE(MAX(proxy_port), 10000)").
+		Where("hub_server_id = ?", server.ID).
+		Select("COALESCE(MAX(proxy_port), 20000)").
 		Scan(&maxPort)
 
 	phone.ProxyPort = maxPort + 1
