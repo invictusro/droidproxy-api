@@ -38,6 +38,20 @@ func Setup(cfg *config.Config) *gin.Engine {
 		})
 	})
 
+	// Internal hub-agent endpoints (authenticated via X-API-Key header)
+	// These endpoints are for hub-to-API communication (sync state, usage reporting)
+	internal := r.Group("/api/internal")
+	{
+		// Hub sync state - called on hub-agent startup for reboot recovery
+		internal.GET("/hubs/:id/sync-state", handlers.GetHubSyncState)
+
+		// Hub ready notification - called after hub-agent completes startup
+		internal.POST("/hubs/:id/ready", handlers.ReportHubReady)
+
+		// Bandwidth usage reporting - called every 30 seconds from hub-agent
+		internal.POST("/usage", handlers.ReportUsage)
+	}
+
 	// Auth routes (no auth required)
 	auth := r.Group("/auth")
 	{
@@ -69,6 +83,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 		// Read-only endpoints - token auth is sufficient
 		phoneAPI.GET("/config", handlers.GetProxyConfig)
 		phoneAPI.GET("/credentials", handlers.GetPhoneCredentials)
+		phoneAPI.GET("/blocklist", handlers.GetDomainBlocklist)
 
 		// Sensitive write operations - require signature verification
 		// This prevents token theft from being used without the private key
@@ -175,6 +190,13 @@ func Setup(cfg *config.Config) *gin.Engine {
 
 			// Maintenance
 			admin.POST("/cleanup/usage", handlers.CleanupOldUsageData)
+
+			// Domain Blocklist management
+			admin.GET("/blocklist", handlers.ListBlocklistEntries)
+			admin.POST("/blocklist", handlers.CreateBlocklistEntry)
+			admin.PUT("/blocklist/:id", handlers.UpdateBlocklistEntry)
+			admin.DELETE("/blocklist/:id", handlers.DeleteBlocklistEntry)
+			admin.POST("/blocklist/seed", handlers.SeedDefaultBlocklist)
 		}
 	}
 

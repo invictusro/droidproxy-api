@@ -901,6 +901,44 @@ func GetPhoneCredentials(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"credentials": result})
 }
 
+// GetDomainBlocklist returns the list of blocked domain patterns for the phone
+// Phone-authenticated endpoint
+func GetDomainBlocklist(c *gin.Context) {
+	phone := middleware.GetCurrentPhone(c)
+	if phone == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Phone not authenticated"})
+		return
+	}
+
+	// Fetch all active blocked domain patterns
+	var blocklist []models.DomainBlocklist
+	if err := database.DB.Where("is_active = ?", true).Find(&blocklist).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch blocklist"})
+		return
+	}
+
+	// Extract just the patterns for the phone
+	patterns := make([]string, 0, len(blocklist))
+	for _, entry := range blocklist {
+		patterns = append(patterns, entry.Pattern)
+	}
+
+	// Find the most recent update time
+	var lastUpdated time.Time
+	if len(blocklist) > 0 {
+		for _, entry := range blocklist {
+			if entry.UpdatedAt.After(lastUpdated) {
+				lastUpdated = entry.UpdatedAt
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, models.BlocklistPatternResponse{
+		Patterns:  patterns,
+		UpdatedAt: lastUpdated,
+	})
+}
+
 // Helper functions
 
 func getNextAvailablePort(server *models.HubServer) (int, error) {

@@ -101,7 +101,7 @@ HEARTBEAT_INTERVAL=10
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
-	// Create systemd service
+	// Create systemd service with production settings
 	serviceContent := `[Unit]
 Description=DroidProxy Hub Agent
 After=network.target
@@ -112,6 +112,9 @@ EnvironmentFile=/etc/hub-agent/config.env
 ExecStart=/usr/local/bin/hub-agent
 Restart=always
 RestartSec=5
+# CRITICAL: Allow thousands of simultaneous connections
+# Default Linux limit is 1024, which is too low for 500+ phones
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
