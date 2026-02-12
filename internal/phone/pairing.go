@@ -25,7 +25,6 @@ type PairingResult struct {
 	CentrifugoToken string `json:"centrifugo_token"`
 	APIBaseURL      string `json:"api_base_url"`
 	ServerIP        string `json:"server_ip"`
-	ProxyPort       int    `json:"proxy_port"`
 }
 
 // GeneratePairingCode generates a unique pairing code for QR scanning

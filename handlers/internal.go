@@ -97,21 +97,11 @@ func GetHubSyncState(c *gin.Context) {
 			})
 		}
 
-		// Add proxy if phone has a port assigned
-		if phone.ProxyPort > 0 && phone.WireGuardIP != "" {
-			proxy := SyncProxy{
-				PhoneID:     phone.ID.String(),
-				Port:        phone.ProxyPort,
-				TargetIP:    phone.WireGuardIP,
-				TargetPort:  1080, // SOCKS5 port on phone
-				Credentials: make([]SyncCredential, 0),
-			}
-
-			// Query credentials for this phone
+		// Add one proxy per credential (each credential has its own port now)
+		if phone.WireGuardIP != "" {
 			var credentials []models.ConnectionCredential
-			database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).Find(&credentials)
+			database.DB.Where("phone_id = ? AND is_active = ? AND port > 0", phone.ID, true).Find(&credentials)
 
-			// Add credentials
 			for _, cred := range credentials {
 				syncCred := SyncCredential{
 					ID:             cred.ID.String(),
@@ -124,13 +114,19 @@ func GetHubSyncState(c *gin.Context) {
 					syncCred.AllowedIP = cred.AllowedIP
 				} else if cred.AuthType == models.AuthTypeUserPass {
 					syncCred.Username = cred.Username
-					syncCred.PasswordHash = cred.Password // Already hashed in DB
+					syncCred.PasswordHash = cred.Password
 				}
 
-				proxy.Credentials = append(proxy.Credentials, syncCred)
-			}
+				proxy := SyncProxy{
+					PhoneID:     phone.ID.String(),
+					Port:        cred.Port,
+					TargetIP:    phone.WireGuardIP,
+					TargetPort:  1080, // SOCKS5 port on phone
+					Credentials: []SyncCredential{syncCred},
+				}
 
-			state.Proxies = append(state.Proxies, proxy)
+				state.Proxies = append(state.Proxies, proxy)
+			}
 		}
 	}
 

@@ -54,6 +54,9 @@ type ConnectionCredential struct {
 	// Patterns: "example.com", "*.example.com", "example.com:443", "example.com:1000-2000"
 	BlockedDomains pq.StringArray `gorm:"type:text[]" json:"blocked_domains,omitempty"`
 
+	// Port - each credential gets its own port
+	Port int `json:"port"`
+
 	// Status
 	IsActive  bool       `gorm:"default:true" json:"is_active"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`
@@ -87,6 +90,7 @@ type ConnectionCredentialResponse struct {
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 	ProxyDomain     string     `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
 	BlockedDomains  []string   `json:"blocked_domains,omitempty"`
+	Port            int        `json:"port"`
 	IsActive        bool       `json:"is_active"`
 	LastUsed        *time.Time `json:"last_used,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -108,6 +112,7 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 		ExpiresAt:       c.ExpiresAt,
 		ProxyDomain:     c.ProxyDomain,
 		BlockedDomains:  c.BlockedDomains,
+		Port:            c.Port,
 		IsActive:        c.IsActive,
 		LastUsed:        c.LastUsed,
 		CreatedAt:       c.CreatedAt,

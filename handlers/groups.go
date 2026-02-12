@@ -458,12 +458,6 @@ func MassCreateCredentials(c *gin.Context) {
 			continue
 		}
 
-		// Assign ports if this is the first credential
-		if phone.ProxyPort == 0 && phone.HubServer != nil {
-			assignPortsForPhone(&phone, phone.HubServer)
-			database.DB.Save(&phone)
-		}
-
 		// Send credential to phone via Centrifugo
 		if phone.PairedAt != nil {
 			notifyPhoneCredentialsUpdated(phoneIDStr)
@@ -562,11 +556,6 @@ func ExportProxies(c *gin.Context) {
 			continue
 		}
 
-		// Skip phones without ports assigned
-		if phone.ProxyPort == 0 {
-			continue
-		}
-
 		info := proxyInfo{Phone: phone}
 
 		// Get credential
@@ -605,9 +594,13 @@ func ExportProxies(c *gin.Context) {
 			host = p.Phone.HubServer.IP
 		}
 
-		port := p.Phone.ProxyPort
-		if req.ProxyType == "http" {
-			port = p.Phone.HTTPPort
+		// Use credential port (each credential has its own port now)
+		port := 0
+		if p.Credential != nil {
+			port = p.Credential.Port
+		}
+		if port == 0 {
+			continue // Skip if no credential with port
 		}
 
 		switch req.Format {
@@ -680,14 +673,3 @@ func ExportProxies(c *gin.Context) {
 }
 
 // Helper function to assign ports (duplicated from connections.go for now)
-func assignPortsForPhone(phone *models.Phone, server *models.HubServer) {
-	// Find the next available port
-	var maxPort int
-	database.DB.Model(&models.Phone{}).
-		Where("hub_server_id = ?", server.ID).
-		Select("COALESCE(MAX(proxy_port), 20000)").
-		Scan(&maxPort)
-
-	phone.ProxyPort = maxPort + 1
-	phone.HTTPPort = maxPort + 2
-}

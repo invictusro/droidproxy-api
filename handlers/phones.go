@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"time"
 
@@ -36,6 +35,7 @@ type CredentialSummary struct {
 	ProxyType string `json:"proxy_type"`
 	Username  string `json:"username,omitempty"`
 	AllowedIP string `json:"allowed_ip,omitempty"`
+	Port      int    `json:"port"`
 }
 
 // ListPhones returns all phones for the current user
@@ -63,6 +63,7 @@ func ListPhones(c *gin.Context) {
 				ProxyType: string(firstCred.ProxyType),
 				Username:  firstCred.Username,
 				AllowedIP: firstCred.AllowedIP,
+				Port:      firstCred.Port,
 			}
 		}
 	}
@@ -418,7 +419,6 @@ func PairPhone(c *gin.Context) {
 		CentrifugoToken: centrifugoToken,
 		APIBaseURL:      config.AppConfig.APIBaseURL,
 		ServerIP:        serverIP,
-		ProxyPort:       phone.ProxyPort,
 	})
 }
 
@@ -798,7 +798,6 @@ func PhoneLogin(c *gin.Context) {
 		CentrifugoToken: centrifugoToken,
 		APIBaseURL:      config.AppConfig.APIBaseURL,
 		ServerIP:        serverIP,
-		ProxyPort:       phone.ProxyPort,
 	})
 }
 
@@ -823,7 +822,6 @@ func GetProxyConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, models.ProxyConfigResponse{
 		PhoneID:         phone.ID.String(),
 		ServerIP:        phone.HubServer.IP,
-		ProxyPort:       phone.ProxyPort,
 		WireGuardConfig: phone.WireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
 		CentrifugoToken: centrifugoToken,
@@ -931,32 +929,6 @@ func GetDomainBlocklist(c *gin.Context) {
 }
 
 // Helper functions
-
-func getNextAvailablePort(server *models.HubServer) (int, error) {
-	var usedPorts []int
-	database.DB.Model(&models.Phone{}).Where("hub_server_id = ?", server.ID).Pluck("proxy_port", &usedPorts)
-
-	usedSet := make(map[int]bool)
-	for _, p := range usedPorts {
-		usedSet[p] = true
-	}
-
-	// Build list of available ports
-	var availablePorts []int
-	for port := server.ProxyPortStart; port <= server.ProxyPortEnd; port++ {
-		if !usedSet[port] {
-			availablePorts = append(availablePorts, port)
-		}
-	}
-
-	if len(availablePorts) == 0 {
-		return 0, fmt.Errorf("no available ports")
-	}
-
-	// Pick a random port from available ones
-	randomIndex := rand.Intn(len(availablePorts))
-	return availablePorts[randomIndex], nil
-}
 
 func generateWireGuardConfig(phone *models.Phone) string {
 	if phone.HubServer == nil {
@@ -1069,12 +1041,16 @@ func cleanupPhoneServerResources(phone *models.Phone) {
 		return
 	}
 
-	// Stop proxy on SOCKS5 port
-	if phone.ProxyPort > 0 {
-		if err := infra.StopProxyV2(phone.HubServer.IP, phone.HubServer.HubAPIPort, phone.HubServer.HubAPIKey, phone.ProxyPort); err != nil {
-			log.Printf("[Cleanup] Failed to stop proxy for phone %s: %v", phone.ID, err)
-		} else {
-			log.Printf("[Cleanup] Stopped proxy for phone %s (port %d)", phone.ID, phone.ProxyPort)
+	// Stop all credential proxies for this phone
+	var credentials []models.ConnectionCredential
+	database.DB.Where("phone_id = ?", phone.ID).Find(&credentials)
+	for _, cred := range credentials {
+		if cred.Port > 0 {
+			if err := infra.StopProxyV2(phone.HubServer.IP, phone.HubServer.HubAPIPort, phone.HubServer.HubAPIKey, cred.Port); err != nil {
+				log.Printf("[Cleanup] Failed to stop proxy for credential %s: %v", cred.ID, err)
+			} else {
+				log.Printf("[Cleanup] Stopped proxy for credential %s (port %d)", cred.ID, cred.Port)
+			}
 		}
 	}
 

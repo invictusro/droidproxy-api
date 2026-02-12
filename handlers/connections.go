@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -15,6 +16,12 @@ import (
 	"github.com/droidproxy/api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+)
+
+const (
+	// Port range for per-credential proxies (separate from phone ports 20001-20100)
+	CredentialPortStart = 10000
+	CredentialPortEnd   = 19999
 )
 
 // ListCredentials returns all connection credentials for a phone
@@ -68,19 +75,10 @@ func CreateCredential(c *gin.Context) {
 		return
 	}
 
-	// Assign ports if not already assigned (first credential creation)
-	if phone.ProxyPort == 0 && phone.HubServer != nil {
-		proxyPort, err := getNextAvailablePort(phone.HubServer)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
-			return
-		}
-		phone.ProxyPort = proxyPort
-		phone.HTTPPort = proxyPort + 7000
-		if err := database.DB.Save(&phone).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign ports"})
-			return
-		}
+	// Verify phone has a hub server assigned
+	if phone.HubServer == nil || phone.HubServerID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone is not paired to a hub server"})
+		return
 	}
 
 	var req models.CreateCredentialRequest
@@ -99,6 +97,13 @@ func CreateCredential(c *gin.Context) {
 		return
 	}
 
+	// Allocate a unique port for this credential
+	credentialPort, err := getNextAvailableCredentialPort(phone.HubServer)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
+		return
+	}
+
 	credential := models.ConnectionCredential{
 		PhoneID:        phoneID,
 		Name:           req.Name,
@@ -107,12 +112,13 @@ func CreateCredential(c *gin.Context) {
 		AllowedIP:      req.AllowedIP,
 		Username:       req.Username,
 		BandwidthLimit: req.BandwidthLimit,
+		Port:           credentialPort,
 		IsActive:       true,
 	}
 
-	// Set default proxy type
+	// Set default proxy type (no longer allow 'both' for new credentials)
 	if credential.ProxyType == "" {
-		credential.ProxyType = models.ProxyTypeBoth
+		credential.ProxyType = models.ProxyTypeSOCKS5
 	}
 
 	// Store plain password (proxy credentials, not user passwords)
@@ -157,25 +163,16 @@ func CreateCredential(c *gin.Context) {
 	// Load server relationship for proxy setup
 	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
 
-	// Update SOCKS5 forwarder on server if this credential supports SOCKS5
-	if credential.ProxyType == models.ProxyTypeSOCKS5 || credential.ProxyType == models.ProxyTypeBoth {
-		go updateSocks5Forwarder(&phone) // Run async to not block response
-	}
+	// Start proxy for this credential on its assigned port
+	go startCredentialProxy(&phone, &credential)
 
-	// Update HTTP proxy on server if this credential supports HTTP
-	if credential.ProxyType == models.ProxyTypeHTTP || credential.ProxyType == models.ProxyTypeBoth {
-		go updateHTTPProxyCredentials(&phone) // Run async to not block response
-	}
-
-	// Return response with plain password (only on creation) and updated phone ports
+	// Return response with plain password (only on creation)
 	response := models.ConnectionCredentialWithPassword{
 		ConnectionCredentialResponse: credential.ToResponse(),
 		Password:                     req.Password, // Include plain password for user to copy
 	}
 	c.JSON(http.StatusCreated, gin.H{
 		"credential": response,
-		"proxy_port": phone.ProxyPort,
-		"http_port":  phone.HTTPPort,
 	})
 }
 
@@ -258,10 +255,11 @@ func UpdateCredential(c *gin.Context) {
 	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
 
-	// Update proxies on server
+	// Update the credential's proxy on the hub-agent
 	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
-	go updateSocks5Forwarder(&phone)
-	go updateHTTPProxyCredentials(&phone)
+	if credential.Port > 0 {
+		go updateCredentialProxy(&phone, &credential)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"credential": credential.ToResponse()})
 }
@@ -306,6 +304,13 @@ func DeleteCredential(c *gin.Context) {
 		}
 	}
 
+	// Stop the credential's proxy before deleting
+	credentialPort := credential.Port
+	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
+	if credentialPort > 0 {
+		go stopCredentialProxy(&phone, credentialPort)
+	}
+
 	// Delete the credential
 	if err := database.DB.Delete(&credential).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete credential"})
@@ -314,11 +319,6 @@ func DeleteCredential(c *gin.Context) {
 
 	// Notify phone to refresh SOCKS5 credentials
 	notifyPhoneCredentialsUpdated(phone.ID.String())
-
-	// Update proxies on server
-	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
-	go updateSocks5Forwarder(&phone)
-	go updateHTTPProxyCredentials(&phone)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Credential deleted"})
 }
@@ -536,76 +536,178 @@ func notifyPhoneRotationSettingsUpdated(phoneID string, mode string, intervalMin
 	}
 }
 
-// updateSocks5Forwarder sets up/updates the proxy on the server using hub-agent V2 API
-// This forwards external connections from server:proxyPort to phone:1080 via WireGuard
-func updateSocks5Forwarder(phone *models.Phone) error {
-	if phone.HubServerID == nil || phone.ProxyPort == 0 || phone.WireGuardIP == "" {
-		return nil // No server, port, or WireGuard IP configured
+
+// getNextAvailableCredentialPort finds a random available port for a credential
+// Ports are selected randomly (not sequentially) from the credential port range
+func getNextAvailableCredentialPort(server *models.HubServer) (int, error) {
+	// Get all currently used credential ports on this server
+	var usedPorts []int
+	database.DB.Model(&models.ConnectionCredential{}).
+		Joins("JOIN phones ON connection_credentials.phone_id = phones.id").
+		Where("phones.hub_server_id = ? AND connection_credentials.port > 0", server.ID).
+		Pluck("connection_credentials.port", &usedPorts)
+
+	// Build a set of used ports for O(1) lookup
+	usedSet := make(map[int]bool, len(usedPorts))
+	for _, port := range usedPorts {
+		usedSet[port] = true
 	}
 
-	// Get server
-	var server models.HubServer
-	if err := database.DB.First(&server, "id = ?", phone.HubServerID).Error; err != nil {
-		return err
+	// Calculate available ports
+	totalPorts := CredentialPortEnd - CredentialPortStart
+	availableCount := totalPorts - len(usedPorts)
+
+	if availableCount <= 0 {
+		return 0, fmt.Errorf("no available ports in range %d-%d", CredentialPortStart, CredentialPortEnd)
+	}
+
+	// Try up to 100 random ports to find an available one
+	for attempts := 0; attempts < 100; attempts++ {
+		port := CredentialPortStart + rand.Intn(totalPorts)
+		if !usedSet[port] {
+			return port, nil
+		}
+	}
+
+	// Fallback: linear scan for first available (shouldn't normally reach here)
+	for port := CredentialPortStart; port < CredentialPortEnd; port++ {
+		if !usedSet[port] {
+			return port, nil
+		}
+	}
+
+	return 0, fmt.Errorf("no available ports found")
+}
+
+// startCredentialProxy starts a proxy for a single credential on its assigned port
+func startCredentialProxy(phone *models.Phone, credential *models.ConnectionCredential) error {
+	if phone.HubServerID == nil || phone.WireGuardIP == "" {
+		return fmt.Errorf("phone has no hub server or WireGuard IP")
+	}
+
+	server := phone.HubServer
+	if server == nil {
+		var s models.HubServer
+		if err := database.DB.First(&s, "id = ?", phone.HubServerID).Error; err != nil {
+			return fmt.Errorf("failed to get hub server: %w", err)
+		}
+		server = &s
 	}
 
 	if server.HubAPIKey == "" || server.HubAPIPort == 0 {
 		return fmt.Errorf("hub-agent not configured for server %s", server.Name)
 	}
 
-	return updateProxyV2(phone, &server)
-}
-
-// updateProxyV2 updates the proxy using hub-agent V2 API (replaces GOST)
-// This unified proxy handles both SOCKS5 and HTTP automatically
-func updateProxyV2(phone *models.Phone, server *models.HubServer) error {
-	// Get ALL active credentials (both SOCKS5 and HTTP)
-	var credentials []models.ConnectionCredential
-	database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).Find(&credentials)
-
-	// Build credential list for V2 API
-	v2Creds := make([]map[string]interface{}, 0, len(credentials))
-	for _, cred := range credentials {
-		// Skip expired credentials
-		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
-			continue
-		}
-
-		credMap := map[string]interface{}{
-			"id":           cred.ID.String(),
-			"auth_type":    string(cred.AuthType),
-			"limit_bytes":  cred.BandwidthLimit,
-		}
-
-		if cred.AuthType == models.AuthTypeIP && cred.AllowedIP != "" {
-			credMap["allowed_ip"] = cred.AllowedIP
-		}
-
-		if cred.AuthType == models.AuthTypeUserPass && cred.Username != "" {
-			credMap["username"] = cred.Username
-			// For V2, we send the plaintext password - hub-agent will hash it
-			// This is secure because we're using HTTPS to the hub
-			if cred.Password != "" {
-				credMap["password_hash"] = cred.Password
-			}
-		}
-
-		// Add blocked domains if configured
-		if len(cred.BlockedDomains) > 0 {
-			credMap["blocked_domains"] = []string(cred.BlockedDomains)
-		}
-
-		v2Creds = append(v2Creds, credMap)
+	// Build credential for V2 API
+	credMap := map[string]interface{}{
+		"id":          credential.ID.String(),
+		"auth_type":   string(credential.AuthType),
+		"limit_bytes": credential.BandwidthLimit,
 	}
 
-	// Update credentials on existing proxy (don't try to start - it's already running)
-	return infra.UpdateProxyCredentialsV2(server.IP, server.HubAPIPort, server.HubAPIKey, phone.ProxyPort, v2Creds)
+	if credential.AuthType == models.AuthTypeIP && credential.AllowedIP != "" {
+		credMap["allowed_ip"] = credential.AllowedIP
+	}
+
+	if credential.AuthType == models.AuthTypeUserPass && credential.Username != "" {
+		credMap["username"] = credential.Username
+		if credential.Password != "" {
+			credMap["password_hash"] = credential.Password
+		}
+	}
+
+	if len(credential.BlockedDomains) > 0 {
+		credMap["blocked_domains"] = []string(credential.BlockedDomains)
+	}
+
+	// Determine protocol from credential's proxy type
+	protocol := "socks5"
+	if credential.ProxyType == models.ProxyTypeHTTP {
+		protocol = "http"
+	}
+
+	// Build proxy config for this single credential
+	proxyConfig := map[string]interface{}{
+		"port":        credential.Port,
+		"target_ip":   phone.WireGuardIP,
+		"target_port": 1080, // Phone SOCKS5 server
+		"protocol":    protocol,
+		"credentials": []map[string]interface{}{credMap},
+	}
+
+	log.Printf("[startCredentialProxy] Starting %s proxy on port %d for credential %s (phone: %s)",
+		protocol, credential.Port, credential.ID, phone.Name)
+
+	return infra.StartProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, proxyConfig)
 }
 
-// updateHTTPProxyCredentials is a no-op with V2 proxy system
-// The V2 proxy is unified - updateProxyV2 handles both SOCKS5 and HTTP automatically
-func updateHTTPProxyCredentials(phone *models.Phone) error {
-	// V2 proxy is unified - updateSocks5Forwarder/updateProxyV2 handles both protocols
-	// No separate HTTP proxy needed
-	return nil
+// stopCredentialProxy stops the proxy for a credential
+func stopCredentialProxy(phone *models.Phone, credentialPort int) error {
+	if phone.HubServerID == nil {
+		return nil
+	}
+
+	server := phone.HubServer
+	if server == nil {
+		var s models.HubServer
+		if err := database.DB.First(&s, "id = ?", phone.HubServerID).Error; err != nil {
+			return fmt.Errorf("failed to get hub server: %w", err)
+		}
+		server = &s
+	}
+
+	if server.HubAPIKey == "" || server.HubAPIPort == 0 {
+		return nil
+	}
+
+	log.Printf("[stopCredentialProxy] Stopping proxy on port %d", credentialPort)
+	return infra.StopProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, credentialPort)
+}
+
+// updateCredentialProxy updates an existing credential's proxy on the hub-agent
+func updateCredentialProxy(phone *models.Phone, credential *models.ConnectionCredential) error {
+	if phone.HubServerID == nil || phone.WireGuardIP == "" || credential.Port == 0 {
+		return nil
+	}
+
+	server := phone.HubServer
+	if server == nil {
+		var s models.HubServer
+		if err := database.DB.First(&s, "id = ?", phone.HubServerID).Error; err != nil {
+			return fmt.Errorf("failed to get hub server: %w", err)
+		}
+		server = &s
+	}
+
+	if server.HubAPIKey == "" || server.HubAPIPort == 0 {
+		return nil
+	}
+
+	// Build credential for V2 API
+	credMap := map[string]interface{}{
+		"id":          credential.ID.String(),
+		"auth_type":   string(credential.AuthType),
+		"limit_bytes": credential.BandwidthLimit,
+	}
+
+	if credential.AuthType == models.AuthTypeIP && credential.AllowedIP != "" {
+		credMap["allowed_ip"] = credential.AllowedIP
+	}
+
+	if credential.AuthType == models.AuthTypeUserPass && credential.Username != "" {
+		credMap["username"] = credential.Username
+		if credential.Password != "" {
+			credMap["password_hash"] = credential.Password
+		}
+	}
+
+	if len(credential.BlockedDomains) > 0 {
+		credMap["blocked_domains"] = []string(credential.BlockedDomains)
+	}
+
+	log.Printf("[updateCredentialProxy] Updating credentials on port %d for credential %s",
+		credential.Port, credential.ID)
+
+	return infra.UpdateProxyCredentialsV2(server.IP, server.HubAPIPort, server.HubAPIKey,
+		credential.Port, []map[string]interface{}{credMap})
 }

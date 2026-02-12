@@ -15,8 +15,8 @@ type HubServer struct {
 	IP             string    `gorm:"not null" json:"-"`        // Hidden from non-admin users
 	WireGuardPort      int    `gorm:"default:51820" json:"-"`
 	WireGuardPublicKey string `json:"-"` // Server's WireGuard public key
-	ProxyPortStart     int    `gorm:"default:20001" json:"-"`
-	ProxyPortEnd   int       `gorm:"default:20100" json:"-"`
+	ProxyPortStart     int    `gorm:"default:10000" json:"-"` // Credential proxy port range start
+	ProxyPortEnd   int       `gorm:"default:19999" json:"-"` // Credential proxy port range end
 	IsActive       bool      `gorm:"default:true" json:"is_active"`
 	CreatedAt      time.Time `json:"created_at"`
 

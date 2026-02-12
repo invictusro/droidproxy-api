@@ -132,10 +132,10 @@ func CreateServer(c *gin.Context) {
 		server.WireGuardPort = 51820
 	}
 	if server.ProxyPortStart == 0 {
-		server.ProxyPortStart = 20001
+		server.ProxyPortStart = 10000
 	}
 	if server.ProxyPortEnd == 0 {
-		server.ProxyPortEnd = 20100
+		server.ProxyPortEnd = 19999
 	}
 	if server.HubAPIPort == 0 {
 		server.HubAPIPort = 8081
@@ -496,39 +496,9 @@ func StartHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	if phone.ProxyPort == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone has no proxy port assigned"})
-		return
-	}
-
-	// Build credentials
-	creds := []map[string]interface{}{}
-	if req.Username != "" && req.Password != "" {
-		creds = append(creds, map[string]interface{}{
-			"id":            "admin-" + req.PhoneID,
-			"auth_type":     "userpass",
-			"username":      req.Username,
-			"password_hash": req.Password,
-		})
-	}
-
-	proxyConfig := map[string]interface{}{
-		"phone_id":    req.PhoneID,
-		"port":        phone.ProxyPort,
-		"target_ip":   phone.WireGuardIP,
-		"target_port": 1080,
-		"credentials": creds,
-	}
-
-	if err := infra.StartProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, proxyConfig); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start proxy: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Proxy started",
-		"port":    phone.ProxyPort,
-	})
+	// Per-credential ports: proxies are now started per credential, not per phone
+	// Use the credential API to create credentials which will start proxies automatically
+	c.JSON(http.StatusBadRequest, gin.H{"error": "This endpoint is deprecated. Use credential API to create proxies."})
 }
 
 // StopHTTPProxy stops a proxy for a phone (admin only)
@@ -556,30 +526,9 @@ func StopHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	// Find the phone to get its proxy port
-	phoneUUID, err := uuid.Parse(phoneID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
-		return
-	}
-
-	var phone models.Phone
-	if err := database.DB.First(&phone, "id = ?", phoneUUID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
-		return
-	}
-
-	if phone.ProxyPort == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone has no proxy port"})
-		return
-	}
-
-	if err := infra.StopProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, phone.ProxyPort); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop proxy: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Proxy stopped"})
+	// Per-credential ports: proxies are now stopped per credential, not per phone
+	// Use the credential API to delete credentials which will stop proxies automatically
+	c.JSON(http.StatusBadRequest, gin.H{"error": "This endpoint is deprecated. Use credential API to manage proxies."})
 }
 
 // ManageFirewall manages firewall rules on a server (admin only)

@@ -21,8 +21,6 @@ type Phone struct {
 	PublicKey         string      `json:"-"` // Phone's ECDSA public key (PEM format) for request signing
 	DeviceFingerprint string      `json:"-"` // Hardware fingerprint for device binding
 	PairedAt          *time.Time  `json:"paired_at"`
-	ProxyPort       int         `json:"proxy_port"`      // SOCKS5 port
-	HTTPPort        int         `json:"http_port"`       // HTTP proxy port (separate from SOCKS5)
 	WireGuardIP     string      `json:"wireguard_ip"`    // Phone's WireGuard IP (e.g., 10.66.66.2)
 	WireGuardConfig    string      `json:"-"` // Sensitive, only returned during pairing
 	WireGuardPrivateKey string     `json:"-"` // Phone's WireGuard private key
@@ -87,8 +85,6 @@ type PhoneResponse struct {
 	ID                      uuid.UUID         `json:"id"`
 	Name                    string            `json:"name"`
 	PairedAt                *time.Time        `json:"paired_at,omitempty"`
-	ProxyPort               int               `json:"proxy_port,omitempty"`  // SOCKS5 port
-	HTTPPort                int               `json:"http_port,omitempty"`   // HTTP proxy port
 	HubServerIP             string            `json:"hub_server_ip,omitempty"` // Hub server IP for proxy connection
 	ProxyDomain             string            `json:"proxy_domain,omitempty"` // Full proxy domain (e.g., "abc123def.cn.yalx.in")
 	HubServer               HubServerResponse `json:"hub_server,omitempty"`
@@ -124,8 +120,6 @@ func (p *Phone) ToResponse() PhoneResponse {
 		ID:                      p.ID,
 		Name:                    p.Name,
 		PairedAt:                p.PairedAt,
-		ProxyPort:               p.ProxyPort,
-		HTTPPort:                p.HTTPPort,
 		ProxyDomain:             p.ProxyDomain,
 		RotationMode:            p.RotationMode,
 		RotationIntervalMinutes: p.RotationIntervalMinutes,
@@ -183,14 +177,12 @@ type PairingResponse struct {
 	CentrifugoToken string `json:"centrifugo_token"`
 	APIBaseURL      string `json:"api_base_url"`
 	ServerIP        string `json:"server_ip"`   // VPS IP for proxy connection
-	ProxyPort       int    `json:"proxy_port"`  // Phone's assigned proxy port
 }
 
 // ProxyConfigResponse contains proxy configuration for the phone
 type ProxyConfigResponse struct {
 	PhoneID         string `json:"phone_id"`
 	ServerIP        string `json:"server_ip"`
-	ProxyPort       int    `json:"proxy_port"`
 	WireGuardConfig string `json:"wireguard_config"`
 	CentrifugoURL   string `json:"centrifugo_url"`
 	CentrifugoToken string `json:"centrifugo_token"`
