@@ -75,7 +75,6 @@ func GetHubSyncState(c *gin.Context) {
 	// Get all paired phones on this hub
 	var phones []models.Phone
 	if err := database.DB.Where("hub_server_id = ? AND paired_at IS NOT NULL", hubID).
-		Preload("ConnectionCredentials").
 		Find(&phones).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch phones"})
 		return
@@ -106,21 +105,21 @@ func GetHubSyncState(c *gin.Context) {
 				Credentials: make([]SyncCredential, 0),
 			}
 
-			// Add credentials
-			for _, cred := range phone.ConnectionCredentials {
-				if !cred.IsActive {
-					continue
-				}
+			// Query credentials for this phone
+			var credentials []models.ConnectionCredential
+			database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).Find(&credentials)
 
+			// Add credentials
+			for _, cred := range credentials {
 				syncCred := SyncCredential{
 					ID:         cred.ID.String(),
-					AuthType:   cred.AuthType,
+					AuthType:   string(cred.AuthType),
 					LimitBytes: uint64(cred.BandwidthLimit),
 				}
 
-				if cred.AuthType == "ip" {
+				if cred.AuthType == models.AuthTypeIP {
 					syncCred.AllowedIP = cred.AllowedIP
-				} else if cred.AuthType == "userpass" {
+				} else if cred.AuthType == models.AuthTypeUserPass {
 					syncCred.Username = cred.Username
 					syncCred.PasswordHash = cred.Password // Already hashed in DB
 				}
