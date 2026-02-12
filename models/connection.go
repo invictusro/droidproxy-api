@@ -40,9 +40,10 @@ type ConnectionCredential struct {
 	Password string `json:"-"` // Hidden in JSON responses
 
 	// Limits
-	BandwidthLimit int64      `json:"bandwidth_limit,omitempty"` // Bytes per month, 0 = unlimited
-	BandwidthUsed  int64      `json:"bandwidth_used"`
-	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	BandwidthLimit  int64      `json:"bandwidth_limit,omitempty"` // Bytes per month, 0 = unlimited
+	BandwidthUsed   int64      `json:"bandwidth_used"`
+	ConnectionCount int64      `json:"connection_count"` // Total number of connections
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 
 	// Status
 	IsActive  bool      `gorm:"default:true" json:"is_active"`
@@ -63,38 +64,40 @@ func (c *ConnectionCredential) BeforeCreate(tx *gorm.DB) error {
 
 // ConnectionCredentialResponse is the public representation
 type ConnectionCredentialResponse struct {
-	ID             uuid.UUID  `json:"id"`
-	PhoneID        uuid.UUID  `json:"phone_id"`
-	Name           string     `json:"name"`
-	AuthType       AuthType   `json:"auth_type"`
-	ProxyType      ProxyType  `json:"proxy_type"`
-	AllowedIP      string     `json:"allowed_ip,omitempty"`
-	Username       string     `json:"username,omitempty"`
-	Password       string     `json:"password,omitempty"` // Plain password for proxy auth
-	BandwidthLimit int64      `json:"bandwidth_limit,omitempty"`
-	BandwidthUsed  int64      `json:"bandwidth_used"`
-	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
-	IsActive       bool       `json:"is_active"`
-	LastUsed       *time.Time `json:"last_used,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID              uuid.UUID  `json:"id"`
+	PhoneID         uuid.UUID  `json:"phone_id"`
+	Name            string     `json:"name"`
+	AuthType        AuthType   `json:"auth_type"`
+	ProxyType       ProxyType  `json:"proxy_type"`
+	AllowedIP       string     `json:"allowed_ip,omitempty"`
+	Username        string     `json:"username,omitempty"`
+	Password        string     `json:"password,omitempty"` // Plain password for proxy auth
+	BandwidthLimit  int64      `json:"bandwidth_limit,omitempty"`
+	BandwidthUsed   int64      `json:"bandwidth_used"`
+	ConnectionCount int64      `json:"connection_count"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	IsActive        bool       `json:"is_active"`
+	LastUsed        *time.Time `json:"last_used,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 	return ConnectionCredentialResponse{
-		ID:             c.ID,
-		PhoneID:        c.PhoneID,
-		Name:           c.Name,
-		AuthType:       c.AuthType,
-		ProxyType:      c.ProxyType,
-		AllowedIP:      c.AllowedIP,
-		Username:       c.Username,
-		Password:       c.Password,
-		BandwidthLimit: c.BandwidthLimit,
-		BandwidthUsed:  c.BandwidthUsed,
-		ExpiresAt:      c.ExpiresAt,
-		IsActive:       c.IsActive,
-		LastUsed:       c.LastUsed,
-		CreatedAt:      c.CreatedAt,
+		ID:              c.ID,
+		PhoneID:         c.PhoneID,
+		Name:            c.Name,
+		AuthType:        c.AuthType,
+		ProxyType:       c.ProxyType,
+		AllowedIP:       c.AllowedIP,
+		Username:        c.Username,
+		Password:        c.Password,
+		BandwidthLimit:  c.BandwidthLimit,
+		BandwidthUsed:   c.BandwidthUsed,
+		ConnectionCount: c.ConnectionCount,
+		ExpiresAt:       c.ExpiresAt,
+		IsActive:        c.IsActive,
+		LastUsed:        c.LastUsed,
+		CreatedAt:       c.CreatedAt,
 	}
 }
 

@@ -40,10 +40,11 @@ type SyncState struct {
 
 // UsageReport represents bandwidth usage for a credential
 type UsageReport struct {
-	CredentialID string `json:"credential_id"`
-	PhoneID      string `json:"phone_id"`
-	BytesIn      uint64 `json:"bytes_in"`
-	BytesOut     uint64 `json:"bytes_out"`
+	CredentialID    string `json:"credential_id"`
+	PhoneID         string `json:"phone_id"`
+	BytesIn         uint64 `json:"bytes_in"`
+	BytesOut        uint64 `json:"bytes_out"`
+	ConnectionCount uint64 `json:"connection_count"`
 }
 
 // UsageBatch represents a batch of usage reports from a hub
@@ -250,20 +251,18 @@ func ReportUsage(c *gin.Context) {
 	// Apply 1.1x multiplier for VPN overhead
 	const overheadMultiplier = 1.1
 
-	// Update bandwidth usage for each credential
+	// Update bandwidth usage and connection count for each credential
 	for _, report := range batch.Reports {
 		adjustedIn := uint64(float64(report.BytesIn) * overheadMultiplier)
 		adjustedOut := uint64(float64(report.BytesOut) * overheadMultiplier)
 
-		// Update credential bandwidth usage
+		// Update credential bandwidth usage and connection count
 		database.DB.Model(&models.ConnectionCredential{}).
 			Where("id = ?", report.CredentialID).
 			Updates(map[string]interface{}{
-				"bandwidth_used": database.DB.Raw("bandwidth_used + ?", adjustedIn+adjustedOut),
+				"bandwidth_used":   database.DB.Raw("bandwidth_used + ?", adjustedIn+adjustedOut),
+				"connection_count": database.DB.Raw("connection_count + ?", report.ConnectionCount),
 			})
-
-		// Also update phone data usage if tracking exists
-		// This is optional and can be used for analytics
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
