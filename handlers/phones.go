@@ -236,11 +236,18 @@ func DeletePhone(c *gin.Context) {
 		}
 	}
 
-	// Delete all credentials for this phone
+	// Delete all related records (foreign key constraints)
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.ConnectionCredential{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.RotationToken{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneStats{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneDataUsage{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneUptimeLog{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneDailyUptime{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneGroupMembership{})
 
 	// Delete the phone
 	if err := database.DB.Delete(&phone).Error; err != nil {
+		log.Printf("[DeletePhone] Failed to delete phone %s: %v", phone.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete phone"})
 		return
 	}
