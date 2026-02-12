@@ -93,36 +93,14 @@ func CreatePhone(c *gin.Context) {
 	}
 
 	// Create phone (ports are assigned when credentials are created)
+	// DNS records are now created per-credential, not per-phone
 	phone := models.Phone{
 		UserID:      userID,
 		HubServerID: &hubServerID,
 		Name:        req.Name,
 	}
 
-	// Generate unique proxy subdomain and create DNS record if DNS manager is configured
-	dnsManager := dns.GetManager()
-	if dnsManager != nil && hubServer.DNSSubdomain != "" {
-		// Generate unique subdomain for this proxy
-		proxySubdomain := dns.GenerateProxySubdomain()
-
-		// Create CNAME record pointing to hub server's A record
-		dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, hubServer.DNSSubdomain)
-		if err != nil {
-			log.Printf("[CreatePhone] Failed to create DNS record: %v", err)
-			// Continue without DNS - not a fatal error
-		} else {
-			phone.ProxySubdomain = dnsRecord.Subdomain
-			phone.ProxyDomain = dnsRecord.FullDomain
-			phone.DNSRecordID = dnsRecord.RecordID
-			log.Printf("[CreatePhone] Created DNS record: %s -> %s", dnsRecord.FullDomain, dnsRecord.TargetHost)
-		}
-	}
-
 	if err := database.DB.Create(&phone).Error; err != nil {
-		// Cleanup DNS record if creation failed
-		if phone.DNSRecordID != 0 && dnsManager != nil {
-			dnsManager.DeleteProxyRecord(phone.DNSRecordID)
-		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create phone"})
 		return
 	}
@@ -242,18 +220,24 @@ func DeletePhone(c *gin.Context) {
 	// Clean up server-side resources (GOST forwarder, route, WireGuard peer)
 	go cleanupPhoneServerResources(&phone)
 
-	// Delete DNS record if it exists
-	if phone.DNSRecordID != 0 {
-		dnsManager := dns.GetManager()
-		if dnsManager != nil {
-			if err := dnsManager.DeleteProxyRecord(phone.DNSRecordID); err != nil {
-				log.Printf("[DeletePhone] Failed to delete DNS record %d: %v", phone.DNSRecordID, err)
-				// Continue with phone deletion even if DNS cleanup fails
-			} else {
-				log.Printf("[DeletePhone] Deleted DNS record for %s", phone.ProxyDomain)
+	// Delete DNS records for all credentials associated with this phone
+	var credentials []models.ConnectionCredential
+	database.DB.Where("phone_id = ?", phone.ID).Find(&credentials)
+	dnsManager := dns.GetManager()
+	if dnsManager != nil {
+		for _, cred := range credentials {
+			if cred.DNSRecordID != 0 {
+				if err := dnsManager.DeleteProxyRecord(cred.DNSRecordID); err != nil {
+					log.Printf("[DeletePhone] Failed to delete DNS record %d for credential %s: %v", cred.DNSRecordID, cred.ID, err)
+				} else {
+					log.Printf("[DeletePhone] Deleted DNS record for credential %s (%s)", cred.ID, cred.ProxyDomain)
+				}
 			}
 		}
 	}
+
+	// Delete all credentials for this phone
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.ConnectionCredential{})
 
 	// Delete the phone
 	if err := database.DB.Delete(&phone).Error; err != nil {

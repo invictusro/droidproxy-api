@@ -45,11 +45,15 @@ type ConnectionCredential struct {
 	ConnectionCount int64      `json:"connection_count"` // Total number of connections
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 
+	// DNS
+	ProxyDomain string `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
+	DNSRecordID int64  `json:"dns_record_id,omitempty"`
+
 	// Status
-	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	IsActive  bool       `gorm:"default:true" json:"is_active"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 
 	// Relationships
 	Phone Phone `gorm:"foreignKey:PhoneID" json:"-"`
@@ -76,6 +80,7 @@ type ConnectionCredentialResponse struct {
 	BandwidthUsed   int64      `json:"bandwidth_used"`
 	ConnectionCount int64      `json:"connection_count"`
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	ProxyDomain     string     `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
 	IsActive        bool       `json:"is_active"`
 	LastUsed        *time.Time `json:"last_used,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -95,6 +100,7 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 		BandwidthUsed:   c.BandwidthUsed,
 		ConnectionCount: c.ConnectionCount,
 		ExpiresAt:       c.ExpiresAt,
+		ProxyDomain:     c.ProxyDomain,
 		IsActive:        c.IsActive,
 		LastUsed:        c.LastUsed,
 		CreatedAt:       c.CreatedAt,

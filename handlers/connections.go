@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/infra"
 	phonecomm "github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/middleware"
@@ -54,6 +56,14 @@ func CreateCredential(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	// Check max credentials limit (10 per phone)
+	var credentialCount int64
+	database.DB.Model(&models.ConnectionCredential{}).Where("phone_id = ?", phoneID).Count(&credentialCount)
+	if credentialCount >= 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Maximum 10 credentials per phone allowed"})
 		return
 	}
 
@@ -122,6 +132,22 @@ func CreateCredential(c *gin.Context) {
 	if err := database.DB.Create(&credential).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create credential"})
 		return
+	}
+
+	// Create DNS record for this credential
+	dnsManager := dns.GetManager()
+	if dnsManager != nil && phone.HubServer != nil && phone.HubServer.DNSSubdomain != "" {
+		proxySubdomain := dns.GenerateProxySubdomain()
+		dnsRecord, err := dnsManager.CreateProxyRecord(proxySubdomain, phone.HubServer.DNSSubdomain)
+		if err != nil {
+			log.Printf("[CreateCredential] Failed to create DNS record: %v", err)
+			// Continue without DNS - not a fatal error
+		} else {
+			credential.ProxyDomain = dnsRecord.FullDomain
+			credential.DNSRecordID = dnsRecord.RecordID
+			database.DB.Save(&credential)
+			log.Printf("[CreateCredential] Created DNS record: %s -> %s", dnsRecord.FullDomain, dnsRecord.TargetHost)
+		}
 	}
 
 	// Notify phone to refresh SOCKS5 credentials
@@ -253,9 +279,28 @@ func DeleteCredential(c *gin.Context) {
 		return
 	}
 
-	result := database.DB.Where("id = ? AND phone_id = ?", credID, phoneID).Delete(&models.ConnectionCredential{})
-	if result.RowsAffected == 0 {
+	// Get the credential to access DNS record ID before deletion
+	var credential models.ConnectionCredential
+	if err := database.DB.Where("id = ? AND phone_id = ?", credID, phoneID).First(&credential).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Credential not found"})
+		return
+	}
+
+	// Delete DNS record if exists
+	if credential.DNSRecordID != 0 {
+		dnsManager := dns.GetManager()
+		if dnsManager != nil {
+			if err := dnsManager.DeleteProxyRecord(credential.DNSRecordID); err != nil {
+				log.Printf("[DeleteCredential] Failed to delete DNS record %d: %v", credential.DNSRecordID, err)
+			} else {
+				log.Printf("[DeleteCredential] Deleted DNS record for %s", credential.ProxyDomain)
+			}
+		}
+	}
+
+	// Delete the credential
+	if err := database.DB.Delete(&credential).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete credential"})
 		return
 	}
 
