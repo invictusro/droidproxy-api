@@ -167,12 +167,16 @@ func CreateCredential(c *gin.Context) {
 		go updateHTTPProxyCredentials(&phone) // Run async to not block response
 	}
 
-	// Return response with plain password (only on creation)
+	// Return response with plain password (only on creation) and updated phone ports
 	response := models.ConnectionCredentialWithPassword{
 		ConnectionCredentialResponse: credential.ToResponse(),
 		Password:                     req.Password, // Include plain password for user to copy
 	}
-	c.JSON(http.StatusCreated, gin.H{"credential": response})
+	c.JSON(http.StatusCreated, gin.H{
+		"credential": response,
+		"proxy_port": phone.ProxyPort,
+		"http_port":  phone.HTTPPort,
+	})
 }
 
 // UpdateCredential updates a connection credential
