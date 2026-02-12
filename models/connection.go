@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -49,6 +50,10 @@ type ConnectionCredential struct {
 	ProxyDomain string `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
 	DNSRecordID int64  `json:"dns_record_id,omitempty"`
 
+	// Domain Blocking (hub-level)
+	// Patterns: "example.com", "*.example.com", "example.com:443", "example.com:1000-2000"
+	BlockedDomains pq.StringArray `gorm:"type:text[]" json:"blocked_domains,omitempty"`
+
 	// Status
 	IsActive  bool       `gorm:"default:true" json:"is_active"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`
@@ -81,6 +86,7 @@ type ConnectionCredentialResponse struct {
 	ConnectionCount int64      `json:"connection_count"`
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 	ProxyDomain     string     `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
+	BlockedDomains  []string   `json:"blocked_domains,omitempty"`
 	IsActive        bool       `json:"is_active"`
 	LastUsed        *time.Time `json:"last_used,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -101,6 +107,7 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 		ConnectionCount: c.ConnectionCount,
 		ExpiresAt:       c.ExpiresAt,
 		ProxyDomain:     c.ProxyDomain,
+		BlockedDomains:  c.BlockedDomains,
 		IsActive:        c.IsActive,
 		LastUsed:        c.LastUsed,
 		CreatedAt:       c.CreatedAt,
@@ -190,4 +197,5 @@ type UpdateCredentialRequest struct {
 	BandwidthLimit *int64     `json:"bandwidth_limit"`
 	ExpiresAt      *string    `json:"expires_at"`
 	IsActive       *bool      `json:"is_active"`
+	BlockedDomains *[]string  `json:"blocked_domains"` // Patterns: "example.com", "*.example.com", "example.com:443"
 }

@@ -17,12 +17,13 @@ type SyncPeer struct {
 }
 
 type SyncCredential struct {
-	ID           string `json:"id"`
-	AuthType     string `json:"auth_type"`
-	AllowedIP    string `json:"allowed_ip,omitempty"`
-	Username     string `json:"username,omitempty"`
-	PasswordHash string `json:"password_hash,omitempty"`
-	LimitBytes   uint64 `json:"limit_bytes"`
+	ID             string   `json:"id"`
+	AuthType       string   `json:"auth_type"`
+	AllowedIP      string   `json:"allowed_ip,omitempty"`
+	Username       string   `json:"username,omitempty"`
+	PasswordHash   string   `json:"password_hash,omitempty"`
+	LimitBytes     uint64   `json:"limit_bytes"`
+	BlockedDomains []string `json:"blocked_domains,omitempty"`
 }
 
 type SyncProxy struct {
@@ -113,9 +114,10 @@ func GetHubSyncState(c *gin.Context) {
 			// Add credentials
 			for _, cred := range credentials {
 				syncCred := SyncCredential{
-					ID:         cred.ID.String(),
-					AuthType:   string(cred.AuthType),
-					LimitBytes: uint64(cred.BandwidthLimit),
+					ID:             cred.ID.String(),
+					AuthType:       string(cred.AuthType),
+					LimitBytes:     uint64(cred.BandwidthLimit),
+					BlockedDomains: cred.BlockedDomains,
 				}
 
 				if cred.AuthType == models.AuthTypeIP {

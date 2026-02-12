@@ -457,7 +457,8 @@ func SetupServer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Server setup completed successfully"})
 }
 
-// StartHTTPProxy starts an HTTP proxy for a phone (admin only)
+// StartHTTPProxy starts a proxy for a phone (admin only)
+// V2 proxy system is unified - handles both SOCKS5 and HTTP on the same port
 func StartHTTPProxy(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -477,7 +478,12 @@ func StartHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	// Find the phone to get its SOCKS5 port
+	if server.HubAPIKey == "" || server.HubAPIPort == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Hub-agent not configured for this server"})
+		return
+	}
+
+	// Find the phone to get its proxy port
 	phoneID, err := uuid.Parse(req.PhoneID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
@@ -495,32 +501,37 @@ func StartHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	client, err := getSSHClient(&server)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "SSH connection failed: " + err.Error()})
-		return
+	// Build credentials
+	creds := []map[string]interface{}{}
+	if req.Username != "" && req.Password != "" {
+		creds = append(creds, map[string]interface{}{
+			"id":            "admin-" + req.PhoneID,
+			"auth_type":     "userpass",
+			"username":      req.Username,
+			"password_hash": req.Password,
+		})
 	}
-	if client == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No SSH credentials configured"})
-		return
-	}
-	defer client.Close()
 
-	httpPort := phone.ProxyPort + 7000
-	proxyManager := infra.NewGostManager(client)
-	result, err := proxyManager.StartProxy(req.PhoneID, phone.ProxyPort, httpPort, req.Username, req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start HTTP proxy: " + err.Error()})
+	proxyConfig := map[string]interface{}{
+		"phone_id":    req.PhoneID,
+		"port":        phone.ProxyPort,
+		"target_ip":   phone.WireGuardIP,
+		"target_port": 1080,
+		"credentials": creds,
+	}
+
+	if err := infra.StartProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, proxyConfig); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start proxy: " + err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message":   "HTTP proxy started",
-		"http_port": httpPort,
-		"result":    result,
+		"message": "Proxy started",
+		"port":    phone.ProxyPort,
 	})
 }
 
-// StopHTTPProxy stops an HTTP proxy for a phone (admin only)
+// StopHTTPProxy stops a proxy for a phone (admin only)
 func StopHTTPProxy(c *gin.Context) {
 	serverID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -540,25 +551,35 @@ func StopHTTPProxy(c *gin.Context) {
 		return
 	}
 
-	client, err := getSSHClient(&server)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "SSH connection failed: " + err.Error()})
-		return
-	}
-	if client == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No SSH credentials configured"})
-		return
-	}
-	defer client.Close()
-
-	proxyManager := infra.NewGostManager(client)
-	result, err := proxyManager.StopProxy(phoneID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop HTTP proxy: " + err.Error()})
+	if server.HubAPIKey == "" || server.HubAPIPort == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Hub-agent not configured for this server"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "HTTP proxy stopped", "result": result})
+	// Find the phone to get its proxy port
+	phoneUUID, err := uuid.Parse(phoneID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var phone models.Phone
+	if err := database.DB.First(&phone, "id = ?", phoneUUID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	if phone.ProxyPort == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone has no proxy port"})
+		return
+	}
+
+	if err := infra.StopProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, phone.ProxyPort); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop proxy: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Proxy stopped"})
 }
 
 // ManageFirewall manages firewall rules on a server (admin only)

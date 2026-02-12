@@ -1058,36 +1058,29 @@ func addWireGuardPeerToServer(server *models.HubServer, publicKey, ip string) {
 	}
 }
 
-// cleanupPhoneServerResources removes GOST forwarder, route, and WireGuard peer for a phone
+// cleanupPhoneServerResources removes proxy and WireGuard peer for a phone using hub-agent V2 API
 func cleanupPhoneServerResources(phone *models.Phone) {
-	if phone.HubServer == nil || phone.HubServer.SSHPassword == "" {
-		return // No server or SSH credentials configured
+	if phone.HubServer == nil {
+		return // No server configured
 	}
 
-	client := infra.NewSSHClient(phone.HubServer.IP, phone.HubServer.SSHPort, phone.HubServer.SSHUser, phone.HubServer.SSHPassword)
-	if err := client.Connect(); err != nil {
-		log.Printf("[Cleanup] Failed to connect to server %s: %v", phone.HubServer.Name, err)
+	if phone.HubServer.HubAPIKey == "" || phone.HubServer.HubAPIPort == 0 {
+		log.Printf("[Cleanup] No hub-agent configured for server %s", phone.HubServer.Name)
 		return
 	}
-	defer client.Close()
 
-	// Stop GOST SOCKS5 forwarder and remove route
-	gostManager := infra.NewGostManager(client)
-	if _, err := gostManager.StopSocks5Forwarder(phone.ID.String(), phone.WireGuardIP); err != nil {
-		log.Printf("[Cleanup] Failed to stop SOCKS5 forwarder for phone %s: %v", phone.ID, err)
-	} else {
-		log.Printf("[Cleanup] Stopped SOCKS5 forwarder for phone %s", phone.ID)
-	}
-
-	// Stop HTTP proxy
-	if _, err := gostManager.StopProxy(phone.ID.String()); err != nil {
-		log.Printf("[Cleanup] Failed to stop HTTP proxy for phone %s: %v", phone.ID, err)
+	// Stop proxy on SOCKS5 port
+	if phone.ProxyPort > 0 {
+		if err := infra.StopProxyV2(phone.HubServer.IP, phone.HubServer.HubAPIPort, phone.HubServer.HubAPIKey, phone.ProxyPort); err != nil {
+			log.Printf("[Cleanup] Failed to stop proxy for phone %s: %v", phone.ID, err)
+		} else {
+			log.Printf("[Cleanup] Stopped proxy for phone %s (port %d)", phone.ID, phone.ProxyPort)
+		}
 	}
 
 	// Remove WireGuard peer
 	if phone.WireGuardPublicKey != "" {
-		wgManager := infra.NewWireGuardManager(client)
-		if err := wgManager.RemovePeer(phone.WireGuardPublicKey); err != nil {
+		if err := infra.RemoveWireGuardPeerV2(phone.HubServer.IP, phone.HubServer.HubAPIPort, phone.HubServer.HubAPIKey, phone.WireGuardPublicKey); err != nil {
 			log.Printf("[Cleanup] Failed to remove WireGuard peer for phone %s: %v", phone.ID, err)
 		} else {
 			log.Printf("[Cleanup] Removed WireGuard peer for phone %s", phone.ID)

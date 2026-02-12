@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -240,6 +241,9 @@ func UpdateCredential(c *gin.Context) {
 	}
 	if req.IsActive != nil {
 		credential.IsActive = *req.IsActive
+	}
+	if req.BlockedDomains != nil {
+		credential.BlockedDomains = *req.BlockedDomains
 	}
 
 	if err := database.DB.Save(&credential).Error; err != nil {
@@ -528,8 +532,8 @@ func notifyPhoneRotationSettingsUpdated(phoneID string, mode string, intervalMin
 	}
 }
 
-// updateSocks5Forwarder sets up/updates the SOCKS5 forwarder on the server
-// This forwards external connections from server:socks5Port to phone:1080 via WireGuard
+// updateSocks5Forwarder sets up/updates the proxy on the server using hub-agent V2 API
+// This forwards external connections from server:proxyPort to phone:1080 via WireGuard
 func updateSocks5Forwarder(phone *models.Phone) error {
 	if phone.HubServerID == nil || phone.ProxyPort == 0 || phone.WireGuardIP == "" {
 		return nil // No server, port, or WireGuard IP configured
@@ -541,99 +545,71 @@ func updateSocks5Forwarder(phone *models.Phone) error {
 		return err
 	}
 
-	if server.SSHPassword == "" {
-		return nil // No SSH credentials
+	if server.HubAPIKey == "" || server.HubAPIPort == 0 {
+		return fmt.Errorf("hub-agent not configured for server %s", server.Name)
 	}
 
-	// Get SOCKS5-compatible credentials (socks5 or both)
-	var credentials []models.ConnectionCredential
-	database.DB.Where("phone_id = ? AND is_active = ? AND (proxy_type = ? OR proxy_type = ?)",
-		phone.ID, true, models.ProxyTypeSOCKS5, models.ProxyTypeBoth).Find(&credentials)
-
-	// Filter out expired and build credential list
-	socks5Creds := make([]infra.GostCredential, 0, len(credentials))
-	for _, cred := range credentials {
-		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
-			continue
-		}
-		// Only userpass auth works for GOST SOCKS5
-		if cred.AuthType == models.AuthTypeUserPass && cred.Username != "" && cred.Password != "" {
-			socks5Creds = append(socks5Creds, infra.GostCredential{
-				Username: cred.Username,
-				Password: cred.Password,
-			})
-		}
-	}
-
-	// Connect to server and set up SOCKS5 forwarder
-	client := infra.NewSSHClient(server.IP, server.SSHPort, server.SSHUser, server.SSHPassword)
-	if err := client.Connect(); err != nil {
-		return err
-	}
-	defer client.Close()
-
-	proxyManager := infra.NewGostManager(client)
-
-	// Start/update SOCKS5 forwarder
-	_, err := proxyManager.StartSocks5Forwarder(phone.ID.String(), phone.ProxyPort, phone.WireGuardIP, socks5Creds)
-	return err
+	return updateProxyV2(phone, &server)
 }
 
-// updateHTTPProxyCredentials updates the HTTP proxy on the server with HTTP-compatible credentials
-func updateHTTPProxyCredentials(phone *models.Phone) error {
-	if phone.HubServerID == nil || phone.HTTPPort == 0 {
-		return nil // No server or HTTP port configured
-	}
-
-	// Get server
-	var server models.HubServer
-	if err := database.DB.First(&server, "id = ?", phone.HubServerID).Error; err != nil {
-		return err
-	}
-
-	if server.SSHPassword == "" {
-		return nil // No SSH credentials
-	}
-
-	// Get HTTP-compatible credentials (http or both)
+// updateProxyV2 updates the proxy using hub-agent V2 API (replaces GOST)
+// This unified proxy handles both SOCKS5 and HTTP automatically
+func updateProxyV2(phone *models.Phone, server *models.HubServer) error {
+	// Get ALL active credentials (both SOCKS5 and HTTP)
 	var credentials []models.ConnectionCredential
-	database.DB.Where("phone_id = ? AND is_active = ? AND (proxy_type = ? OR proxy_type = ?)",
-		phone.ID, true, models.ProxyTypeHTTP, models.ProxyTypeBoth).Find(&credentials)
+	database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).Find(&credentials)
 
-	// Filter out expired and build credential list
-	httpCreds := make([]infra.GostCredential, 0, len(credentials))
+	// Build credential list for V2 API
+	v2Creds := make([]map[string]interface{}, 0, len(credentials))
 	for _, cred := range credentials {
+		// Skip expired credentials
 		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
 			continue
 		}
-		// Only userpass auth works for HTTP proxy
-		if cred.AuthType == models.AuthTypeUserPass && cred.Username != "" && cred.Password != "" {
-			httpCreds = append(httpCreds, infra.GostCredential{
-				Username: cred.Username,
-				Password: cred.Password,
-			})
+
+		credMap := map[string]interface{}{
+			"id":           cred.ID.String(),
+			"auth_type":    string(cred.AuthType),
+			"limit_bytes":  cred.BandwidthLimit,
 		}
-	}
 
-	// Connect to server and update HTTP proxy
-	client := infra.NewSSHClient(server.IP, server.SSHPort, server.SSHUser, server.SSHPassword)
-	if err := client.Connect(); err != nil {
-		return err
-	}
-	defer client.Close()
-
-	proxyManager := infra.NewGostManager(client)
-
-	if len(httpCreds) == 0 {
-		// No HTTP credentials, stop HTTP proxy if running
-		proxyManager.StopProxy(phone.ID.String())
-	} else {
-		// Start/update HTTP proxy with credentials
-		_, err := proxyManager.StartProxyMultiUser(phone.ID.String(), phone.ProxyPort, phone.HTTPPort, httpCreds)
-		if err != nil {
-			return err
+		if cred.AuthType == models.AuthTypeIP && cred.AllowedIP != "" {
+			credMap["allowed_ip"] = cred.AllowedIP
 		}
+
+		if cred.AuthType == models.AuthTypeUserPass && cred.Username != "" {
+			credMap["username"] = cred.Username
+			// For V2, we send the plaintext password - hub-agent will hash it
+			// This is secure because we're using HTTPS to the hub
+			if cred.Password != "" {
+				credMap["password_hash"] = cred.Password
+			}
+		}
+
+		// Add blocked domains if configured
+		if len(cred.BlockedDomains) > 0 {
+			credMap["blocked_domains"] = []string(cred.BlockedDomains)
+		}
+
+		v2Creds = append(v2Creds, credMap)
 	}
 
+	// Build proxy config for V2 API
+	proxyConfig := map[string]interface{}{
+		"phone_id":    phone.ID.String(),
+		"port":        phone.ProxyPort,
+		"target_ip":   phone.WireGuardIP,
+		"target_port": 1080,
+		"credentials": v2Creds,
+	}
+
+	return infra.StartProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, proxyConfig)
+}
+
+// updateHTTPProxyCredentials is a no-op with V2 proxy system
+// The V2 proxy is unified - updateProxyV2 handles both SOCKS5 and HTTP automatically
+func updateHTTPProxyCredentials(phone *models.Phone) error {
+	// V2 proxy is unified - updateSocks5Forwarder/updateProxyV2 handles both protocols
+	// No separate HTTP proxy needed
 	return nil
 }
