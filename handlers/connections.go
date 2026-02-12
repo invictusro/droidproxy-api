@@ -598,16 +598,8 @@ func updateProxyV2(phone *models.Phone, server *models.HubServer) error {
 		v2Creds = append(v2Creds, credMap)
 	}
 
-	// Build proxy config for V2 API
-	proxyConfig := map[string]interface{}{
-		"phone_id":    phone.ID.String(),
-		"port":        phone.ProxyPort,
-		"target_ip":   phone.WireGuardIP,
-		"target_port": 1080,
-		"credentials": v2Creds,
-	}
-
-	return infra.StartProxyV2(server.IP, server.HubAPIPort, server.HubAPIKey, proxyConfig)
+	// Update credentials on existing proxy (don't try to start - it's already running)
+	return infra.UpdateProxyCredentialsV2(server.IP, server.HubAPIPort, server.HubAPIKey, phone.ProxyPort, v2Creds)
 }
 
 // updateHTTPProxyCredentials is a no-op with V2 proxy system
