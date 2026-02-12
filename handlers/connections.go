@@ -496,22 +496,17 @@ type PhoneCredential struct {
 }
 
 // Helper to notify phone of credential updates with full data
-// Only sends credentials that allow SOCKS5 connections (socks5 or both)
+// Sends ALL credentials because the hub always connects to phone via SOCKS5
 func notifyPhoneCredentialsUpdated(phoneID string) {
 	// Fetch current credentials for this phone
 	var credentials []models.ConnectionCredential
 	database.DB.Where("phone_id = ? AND is_active = ?", phoneID, true).Find(&credentials)
 
-	// Convert to phone format - only SOCKS5-compatible credentials
+	// Convert to phone format - send ALL credentials (hub uses SOCKS5 for all connections)
 	phoneCredentials := make([]PhoneCredential, 0, len(credentials))
 	for _, cred := range credentials {
 		// Skip expired credentials
 		if cred.ExpiresAt != nil && cred.ExpiresAt.Before(time.Now()) {
-			continue
-		}
-
-		// Only send credentials that allow SOCKS5 (socks5 or both)
-		if cred.ProxyType != models.ProxyTypeSOCKS5 && cred.ProxyType != models.ProxyTypeBoth {
 			continue
 		}
 
