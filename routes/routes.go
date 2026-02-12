@@ -38,8 +38,8 @@ func Setup(cfg *config.Config) *gin.Engine {
 		})
 	})
 
-	// Internal hub-agent endpoints (authenticated via X-API-Key header)
-	// These endpoints are for hub-to-API communication (sync state, usage reporting)
+	// Internal hub-agent endpoints (authenticated via X-Hub-API-Key header)
+	// These endpoints are for hub-to-API communication (sync state, usage reporting, heartbeat)
 	internal := r.Group("/api/internal")
 	{
 		// Hub sync state - called on hub-agent startup for reboot recovery
@@ -50,6 +50,16 @@ func Setup(cfg *config.Config) *gin.Engine {
 
 		// Bandwidth usage reporting - called every 30 seconds from hub-agent
 		internal.POST("/usage", handlers.ReportUsage)
+	}
+
+	// Hub heartbeat endpoints (legacy path for backwards compatibility)
+	hub := r.Group("/api/hub")
+	{
+		// Heartbeat - called every 10 seconds from hub-agent
+		hub.POST("/heartbeat", handlers.HubHeartbeat)
+
+		// Connection logs - called every 60 seconds from hub-agent
+		hub.POST("/connections", handlers.HubConnectionLogs)
 	}
 
 	// Auth routes (no auth required)

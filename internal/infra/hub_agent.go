@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -34,7 +35,7 @@ func GetHubAgentTelemetry(ip string, port int, apiKey string) (*HubAgentTelemetr
 		return nil, err
 	}
 
-	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("X-Hub-API-Key", apiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -73,6 +74,85 @@ type HubAgentProvisioner struct {
 // NewHubAgentProvisioner creates a new provisioner
 func NewHubAgentProvisioner(ssh *SSHClient) *HubAgentProvisioner {
 	return &HubAgentProvisioner{ssh: ssh}
+}
+
+// AddWireGuardPeerV2 adds a WireGuard peer using the V2 wgctrl-based API
+func AddWireGuardPeerV2(ip string, port int, apiKey string, publicKey, allowedIPs string) error {
+	url := fmt.Sprintf("http://%s:%d/v2/wireguard/peers", ip, port)
+
+	body := map[string]interface{}{
+		"public_key": publicKey,
+		"allowed_ips": allowedIPs,
+		"persistent_keepalive": 25, // For NAT traversal
+	}
+
+	return doHubAgentRequest("POST", url, apiKey, body)
+}
+
+// RemoveWireGuardPeerV2 removes a WireGuard peer using the V2 wgctrl-based API
+func RemoveWireGuardPeerV2(ip string, port int, apiKey string, publicKey string) error {
+	url := fmt.Sprintf("http://%s:%d/v2/wireguard/peers/%s", ip, port, publicKey)
+	return doHubAgentRequest("DELETE", url, apiKey, nil)
+}
+
+// StartProxyV2 starts a proxy using the V2 proxy engine
+func StartProxyV2(ip string, port int, apiKey string, proxyConfig map[string]interface{}) error {
+	url := fmt.Sprintf("http://%s:%d/v2/proxy/start", ip, port)
+	return doHubAgentRequest("POST", url, apiKey, proxyConfig)
+}
+
+// StopProxyV2 stops a proxy using the V2 proxy engine
+func StopProxyV2(ip string, hubAPIPort int, apiKey string, proxyPort int) error {
+	url := fmt.Sprintf("http://%s:%d/v2/proxy/%d", ip, hubAPIPort, proxyPort)
+	return doHubAgentRequest("DELETE", url, apiKey, nil)
+}
+
+// UpdateProxyCredentialsV2 updates credentials for a proxy
+func UpdateProxyCredentialsV2(ip string, hubAPIPort int, apiKey string, proxyPort int, credentials []map[string]interface{}) error {
+	url := fmt.Sprintf("http://%s:%d/v2/proxy/%d/credentials", ip, hubAPIPort, proxyPort)
+	body := map[string]interface{}{
+		"credentials": credentials,
+	}
+	return doHubAgentRequest("PUT", url, apiKey, body)
+}
+
+// doHubAgentRequest performs a request to the hub-agent API
+func doHubAgentRequest(method, url, apiKey string, body interface{}) error {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	var reqBody io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		reqBody = bytes.NewReader(jsonBody)
+	}
+
+	req, err := http.NewRequest(method, url, reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-Hub-API-Key", apiKey)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("hub-agent returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
 }
 
 // Install downloads and installs hub-agent on the remote server

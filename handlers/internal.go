@@ -160,6 +160,70 @@ func ReportHubReady(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Hub marked as ready"})
 }
 
+// HubHeartbeat receives heartbeat from hub-agent
+// POST /api/hub/heartbeat
+func HubHeartbeat(c *gin.Context) {
+	var payload struct {
+		HubID             string    `json:"hub_id"`
+		Timestamp         time.Time `json:"timestamp"`
+		Health            struct {
+			CPUPercent    float64 `json:"cpu_percent"`
+			MemoryPercent float64 `json:"memory_percent"`
+			DiskPercent   float64 `json:"disk_percent"`
+		} `json:"health"`
+		ActiveConnections int    `json:"active_connections"`
+		WireGuardStatus   string `json:"wireguard_status"`
+		WireGuardPeers    int    `json:"wireguard_peers"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Update hub server record
+	now := time.Now()
+	database.DB.Model(&models.HubServer{}).
+		Where("id = ?", payload.HubID).
+		Updates(map[string]interface{}{
+			"last_heartbeat": &now,
+			"cpu_percent":    payload.Health.CPUPercent,
+			"memory_percent": payload.Health.MemoryPercent,
+		})
+
+	c.JSON(http.StatusOK, gin.H{"message": "Heartbeat received"})
+}
+
+// HubConnectionLogs receives connection logs from hub-agent
+// POST /api/hub/connections
+func HubConnectionLogs(c *gin.Context) {
+	var payload struct {
+		HubID       string `json:"hub_id"`
+		Connections []struct {
+			PhoneID   string `json:"phone_id"`
+			ClientIP  string `json:"client_ip"`
+			Target    string `json:"target"`
+			StartTime string `json:"start_time"`
+			EndTime   string `json:"end_time"`
+			BytesIn   int64  `json:"bytes_in"`
+			BytesOut  int64  `json:"bytes_out"`
+		} `json:"connections"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// For now, just log - could store in database for analytics
+	// log.Printf("Received %d connection logs from hub %s", len(payload.Connections), payload.HubID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Connection logs received",
+		"count":   len(payload.Connections),
+	})
+}
+
 // ReportUsage receives bandwidth usage reports from a hub
 // POST /api/internal/usage
 func ReportUsage(c *gin.Context) {
