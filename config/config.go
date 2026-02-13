@@ -40,7 +40,7 @@ type Config struct {
 	Port        string `mapstructure:"PORT"`
 	Env         string `mapstructure:"ENV"`
 	FrontendURL string `mapstructure:"FRONTEND_URL"`
-	APIBaseURL  string `mapstructure:"API_BASE_URL"` // Public API URL (e.g., https://api.alobot.io)
+	APIBaseURL  string `mapstructure:"API_BASE_URL"` // Public API URL (e.g., https://api.droidproxy.com)
 }
 
 var AppConfig *Config
@@ -80,7 +80,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("FRONTEND_URL", "http://localhost:5173")
 	viper.SetDefault("CENTRIFUGO_URL", "http://localhost:8000")
 	viper.SetDefault("CENTRIFUGO_PUBLIC_URL", "") // Falls back to CENTRIFUGO_URL if not set
-	viper.SetDefault("API_BASE_URL", "https://api.alobot.io")
+	viper.SetDefault("API_BASE_URL", "https://api.droidproxy.com")
 	viper.SetDefault("RAGE4_CNAME_PREFIX", "cn") // Default CNAME prefix
 
 	// Only try to read .env file if it exists

@@ -171,7 +171,7 @@ func (p *HubAgentProvisioner) Install(binaryURL, hubID, apiKey string, port int)
 	// Create config file
 	configContent := fmt.Sprintf(`HUB_ID=%s
 HUB_API_KEY=%s
-MAIN_API_URL=https://api.alobot.io
+MAIN_API_URL=https://api.droidproxy.com
 HUB_API_PORT=%d
 HEARTBEAT_INTERVAL=10
 `, hubID, apiKey, port)

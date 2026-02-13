@@ -7,6 +7,7 @@ import (
 	"github.com/droidproxy/api/database"
 	"github.com/droidproxy/api/models"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // SyncState structures for hub-agent communication
@@ -241,8 +242,11 @@ func ReportUsage(c *gin.Context) {
 		return
 	}
 
-	// Verify API key
+	// Verify API key (accept both X-API-Key and X-Hub-API-Key headers)
 	apiKey := c.GetHeader("X-API-Key")
+	if apiKey == "" {
+		apiKey = c.GetHeader("X-Hub-API-Key")
+	}
 	if apiKey != server.HubAPIKey {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
 		return
@@ -250,6 +254,12 @@ func ReportUsage(c *gin.Context) {
 
 	// Apply 1.1x multiplier for VPN overhead
 	const overheadMultiplier = 1.1
+
+	// Aggregate usage by phone for daily tracking
+	phoneUsage := make(map[string]struct {
+		BytesIn  int64
+		BytesOut int64
+	})
 
 	// Update bandwidth usage and connection count for each credential
 	for _, report := range batch.Reports {
@@ -263,10 +273,51 @@ func ReportUsage(c *gin.Context) {
 				"bandwidth_used":   database.DB.Raw("bandwidth_used + ?", adjustedIn+adjustedOut),
 				"connection_count": database.DB.Raw("connection_count + ?", report.ConnectionCount),
 			})
+
+		// Aggregate by phone for daily usage tracking
+		if usage, ok := phoneUsage[report.PhoneID]; ok {
+			usage.BytesIn += int64(adjustedIn)
+			usage.BytesOut += int64(adjustedOut)
+			phoneUsage[report.PhoneID] = usage
+		} else {
+			phoneUsage[report.PhoneID] = struct {
+				BytesIn  int64
+				BytesOut int64
+			}{int64(adjustedIn), int64(adjustedOut)}
+		}
+	}
+
+	// Update PhoneDataUsage table for daily tracking
+	today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.UTC)
+	for phoneID, usage := range phoneUsage {
+		// Upsert daily usage record
+		var existing models.PhoneDataUsage
+		result := database.DB.Where("phone_id = ? AND date = ?", phoneID, today).First(&existing)
+		if result.Error != nil {
+			// Create new record
+			database.DB.Create(&models.PhoneDataUsage{
+				PhoneID:  mustParseUUID(phoneID),
+				Date:     today,
+				BytesIn:  usage.BytesIn,
+				BytesOut: usage.BytesOut,
+			})
+		} else {
+			// Update existing record
+			database.DB.Model(&existing).Updates(map[string]interface{}{
+				"bytes_in":  database.DB.Raw("bytes_in + ?", usage.BytesIn),
+				"bytes_out": database.DB.Raw("bytes_out + ?", usage.BytesOut),
+			})
+		}
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"message": "Usage reported",
 		"count":   len(batch.Reports),
 	})
+}
+
+// mustParseUUID parses a UUID string, returning uuid.Nil if invalid
+func mustParseUUID(s string) uuid.UUID {
+	id, _ := uuid.Parse(s)
+	return id
 }
