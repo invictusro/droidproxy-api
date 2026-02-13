@@ -41,9 +41,10 @@ type ConnectionCredential struct {
 	Password string `json:"-"` // Hidden in JSON responses
 
 	// Limits
-	BandwidthLimit  int64      `json:"bandwidth_limit,omitempty"` // Bytes per month, 0 = unlimited
+	BandwidthLimit  int64      `json:"bandwidth_limit,omitempty"`  // Bytes per month, 0 = unlimited
 	BandwidthUsed   int64      `json:"bandwidth_used"`
-	ConnectionCount int64      `json:"connection_count"` // Total number of connections
+	ConnectionCount int64      `json:"connection_count"`           // Total number of connections
+	ConnectionLimit int        `json:"connection_limit,omitempty"` // Max unique IPs (30min TTL), 0 = unlimited
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 
 	// DNS
@@ -90,6 +91,7 @@ type ConnectionCredentialResponse struct {
 	BandwidthLimit  int64      `json:"bandwidth_limit,omitempty"`
 	BandwidthUsed   int64      `json:"bandwidth_used"`
 	ConnectionCount int64      `json:"connection_count"`
+	ConnectionLimit int        `json:"connection_limit,omitempty"`
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 	ProxyDomain     string     `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
 	BlockedDomains  []string   `json:"blocked_domains,omitempty"`
@@ -113,6 +115,7 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 		BandwidthLimit:  c.BandwidthLimit,
 		BandwidthUsed:   c.BandwidthUsed,
 		ConnectionCount: c.ConnectionCount,
+		ConnectionLimit: c.ConnectionLimit,
 		ExpiresAt:       c.ExpiresAt,
 		ProxyDomain:     c.ProxyDomain,
 		BlockedDomains:  c.BlockedDomains,
@@ -188,26 +191,28 @@ func (r *RotationToken) ToResponse(baseURL string, showToken bool) RotationToken
 
 // Request/Response types for API
 type CreateCredentialRequest struct {
-	Name           string    `json:"name" binding:"required"`
-	AuthType       AuthType  `json:"auth_type" binding:"required"`
-	ProxyType      ProxyType `json:"proxy_type"`
-	AllowedIP      string    `json:"allowed_ip"`
-	Username       string    `json:"username"`
-	Password       string    `json:"password"`
-	BandwidthLimit int64     `json:"bandwidth_limit"`
-	ExpiresAt      string    `json:"expires_at"`
-	UdpEnabled     bool      `json:"udp_enabled"` // Enable UDP ASSOCIATE for SOCKS5
+	Name            string    `json:"name" binding:"required"`
+	AuthType        AuthType  `json:"auth_type" binding:"required"`
+	ProxyType       ProxyType `json:"proxy_type"`
+	AllowedIP       string    `json:"allowed_ip"`
+	Username        string    `json:"username"`
+	Password        string    `json:"password"`
+	BandwidthLimit  int64     `json:"bandwidth_limit"`
+	ConnectionLimit int       `json:"connection_limit"` // Max unique IPs (30min TTL), 0 = unlimited
+	ExpiresAt       string    `json:"expires_at"`
+	UdpEnabled      bool      `json:"udp_enabled"` // Enable UDP ASSOCIATE for SOCKS5
 }
 
 type UpdateCredentialRequest struct {
-	Name           *string    `json:"name"`
-	ProxyType      *ProxyType `json:"proxy_type"`
-	AllowedIP      *string    `json:"allowed_ip"`
-	Username       *string    `json:"username"`
-	Password       *string    `json:"password"`
-	BandwidthLimit *int64     `json:"bandwidth_limit"`
-	ExpiresAt      *string    `json:"expires_at"`
-	IsActive       *bool      `json:"is_active"`
-	BlockedDomains *[]string  `json:"blocked_domains"` // Patterns: "example.com", "*.example.com", "example.com:443"
-	UdpEnabled     *bool      `json:"udp_enabled"`     // Enable UDP ASSOCIATE for SOCKS5
+	Name            *string    `json:"name"`
+	ProxyType       *ProxyType `json:"proxy_type"`
+	AllowedIP       *string    `json:"allowed_ip"`
+	Username        *string    `json:"username"`
+	Password        *string    `json:"password"`
+	BandwidthLimit  *int64     `json:"bandwidth_limit"`
+	ConnectionLimit *int       `json:"connection_limit"` // Max unique IPs (30min TTL), 0 = unlimited
+	ExpiresAt       *string    `json:"expires_at"`
+	IsActive        *bool      `json:"is_active"`
+	BlockedDomains  *[]string  `json:"blocked_domains"` // Patterns: "example.com", "*.example.com", "example.com:443"
+	UdpEnabled      *bool      `json:"udp_enabled"`     // Enable UDP ASSOCIATE for SOCKS5
 }

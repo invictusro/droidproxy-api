@@ -18,14 +18,15 @@ type SyncPeer struct {
 }
 
 type SyncCredential struct {
-	ID             string   `json:"id"`
-	AuthType       string   `json:"auth_type"`
-	AllowedIP      string   `json:"allowed_ip,omitempty"`
-	Username       string   `json:"username,omitempty"`
-	PasswordHash   string   `json:"password_hash,omitempty"`
-	LimitBytes     uint64   `json:"limit_bytes"`
-	BlockedDomains []string `json:"blocked_domains,omitempty"`
-	UdpEnabled     bool     `json:"udp_enabled"` // Enable UDP ASSOCIATE for SOCKS5
+	ID              string   `json:"id"`
+	AuthType        string   `json:"auth_type"`
+	AllowedIP       string   `json:"allowed_ip,omitempty"`
+	Username        string   `json:"username,omitempty"`
+	PasswordHash    string   `json:"password_hash,omitempty"`
+	LimitBytes      uint64   `json:"limit_bytes"`
+	ConnectionLimit int      `json:"connection_limit"` // Max unique IPs (30min TTL), 0 = unlimited
+	BlockedDomains  []string `json:"blocked_domains,omitempty"`
+	UdpEnabled      bool     `json:"udp_enabled"` // Enable UDP ASSOCIATE for SOCKS5
 }
 
 type SyncProxy struct {
@@ -106,11 +107,12 @@ func GetHubSyncState(c *gin.Context) {
 
 			for _, cred := range credentials {
 				syncCred := SyncCredential{
-					ID:             cred.ID.String(),
-					AuthType:       string(cred.AuthType),
-					LimitBytes:     uint64(cred.BandwidthLimit),
-					BlockedDomains: cred.BlockedDomains,
-					UdpEnabled:     cred.UdpEnabled,
+					ID:              cred.ID.String(),
+					AuthType:        string(cred.AuthType),
+					LimitBytes:      uint64(cred.BandwidthLimit),
+					ConnectionLimit: cred.ConnectionLimit,
+					BlockedDomains:  cred.BlockedDomains,
+					UdpEnabled:      cred.UdpEnabled,
 				}
 
 				if cred.AuthType == models.AuthTypeIP {

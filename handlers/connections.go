@@ -105,16 +105,17 @@ func CreateCredential(c *gin.Context) {
 	}
 
 	credential := models.ConnectionCredential{
-		PhoneID:        phoneID,
-		Name:           req.Name,
-		AuthType:       req.AuthType,
-		ProxyType:      req.ProxyType,
-		AllowedIP:      req.AllowedIP,
-		Username:       req.Username,
-		BandwidthLimit: req.BandwidthLimit,
-		Port:           credentialPort,
-		UdpEnabled:     req.UdpEnabled, // UDP ASSOCIATE support (SOCKS5 only)
-		IsActive:       true,
+		PhoneID:         phoneID,
+		Name:            req.Name,
+		AuthType:        req.AuthType,
+		ProxyType:       req.ProxyType,
+		AllowedIP:       req.AllowedIP,
+		Username:        req.Username,
+		BandwidthLimit:  req.BandwidthLimit,
+		ConnectionLimit: req.ConnectionLimit, // Max unique IPs (30min TTL)
+		Port:            credentialPort,
+		UdpEnabled:      req.UdpEnabled, // UDP ASSOCIATE support (SOCKS5 only)
+		IsActive:        true,
 	}
 
 	// Set default proxy type (no longer allow 'both' for new credentials)
@@ -249,6 +250,9 @@ func UpdateCredential(c *gin.Context) {
 	}
 	if req.UdpEnabled != nil {
 		credential.UdpEnabled = *req.UdpEnabled
+	}
+	if req.ConnectionLimit != nil {
+		credential.ConnectionLimit = *req.ConnectionLimit
 	}
 
 	if err := database.DB.Save(&credential).Error; err != nil {
@@ -599,10 +603,11 @@ func startCredentialProxy(phone *models.Phone, credential *models.ConnectionCred
 
 	// Build credential for V2 API
 	credMap := map[string]interface{}{
-		"id":          credential.ID.String(),
-		"auth_type":   string(credential.AuthType),
-		"limit_bytes": credential.BandwidthLimit,
-		"udp_enabled": credential.UdpEnabled,
+		"id":               credential.ID.String(),
+		"auth_type":        string(credential.AuthType),
+		"limit_bytes":      credential.BandwidthLimit,
+		"connection_limit": credential.ConnectionLimit, // Max unique IPs (30min TTL)
+		"udp_enabled":      credential.UdpEnabled,
 	}
 
 	if credential.AuthType == models.AuthTypeIP && credential.AllowedIP != "" {
@@ -685,10 +690,11 @@ func updateCredentialProxy(phone *models.Phone, credential *models.ConnectionCre
 
 	// Build credential for V2 API
 	credMap := map[string]interface{}{
-		"id":          credential.ID.String(),
-		"auth_type":   string(credential.AuthType),
-		"limit_bytes": credential.BandwidthLimit,
-		"udp_enabled": credential.UdpEnabled,
+		"id":               credential.ID.String(),
+		"auth_type":        string(credential.AuthType),
+		"limit_bytes":      credential.BandwidthLimit,
+		"connection_limit": credential.ConnectionLimit, // Max unique IPs (30min TTL)
+		"udp_enabled":      credential.UdpEnabled,
 	}
 
 	if credential.AuthType == models.AuthTypeIP && credential.AllowedIP != "" {
