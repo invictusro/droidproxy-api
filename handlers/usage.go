@@ -12,6 +12,7 @@ import (
 )
 
 // GetPhoneDataUsage returns data usage for a specific phone
+// Supports optional query params: start_date, end_date (format: 2006-01-02)
 func GetPhoneDataUsage(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	phoneID, err := uuid.Parse(c.Param("id"))
@@ -29,39 +30,42 @@ func GetPhoneDataUsage(c *gin.Context) {
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	startOfLastMonth := startOfMonth.AddDate(0, -1, 0)
 
-	// Get this month's usage
-	var thisMonthUsage []models.PhoneDataUsage
-	database.DB.Where("phone_id = ? AND date >= ?", phoneID, startOfMonth).Find(&thisMonthUsage)
+	// Parse optional date range params
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
 
-	thisMonth := models.DataUsageSummary{}
-	for _, u := range thisMonthUsage {
-		thisMonth.BytesIn += u.BytesIn
-		thisMonth.BytesOut += u.BytesOut
+	var startDate, endDate time.Time
+	if startDateStr != "" {
+		if parsed, err := time.Parse("2006-01-02", startDateStr); err == nil {
+			startDate = parsed
+		}
 	}
-	thisMonth.Total = thisMonth.BytesIn + thisMonth.BytesOut
-
-	// Get last month's usage
-	var lastMonthUsage []models.PhoneDataUsage
-	database.DB.Where("phone_id = ? AND date >= ? AND date < ?", phoneID, startOfLastMonth, startOfMonth).Find(&lastMonthUsage)
-
-	lastMonth := models.DataUsageSummary{}
-	for _, u := range lastMonthUsage {
-		lastMonth.BytesIn += u.BytesIn
-		lastMonth.BytesOut += u.BytesOut
+	if endDateStr != "" {
+		if parsed, err := time.Parse("2006-01-02", endDateStr); err == nil {
+			endDate = parsed.Add(24*time.Hour - time.Second) // End of day
+		}
 	}
-	lastMonth.Total = lastMonth.BytesIn + lastMonth.BytesOut
 
-	// Get daily breakdown (last 30 days)
-	thirtyDaysAgo := today.AddDate(0, 0, -30)
+	// Default to last 90 days if no date range specified
+	if startDate.IsZero() {
+		startDate = today.AddDate(0, 0, -90)
+	}
+	if endDate.IsZero() {
+		endDate = today.Add(24*time.Hour - time.Second)
+	}
+
+	// Get usage for date range
 	var dailyUsage []models.PhoneDataUsage
-	database.DB.Where("phone_id = ? AND date >= ?", phoneID, thirtyDaysAgo).
+	database.DB.Where("phone_id = ? AND date >= ? AND date <= ?", phoneID, startDate, endDate).
 		Order("date DESC").Find(&dailyUsage)
 
+	// Calculate totals for the period
+	totalSummary := models.DataUsageSummary{}
 	daily := make([]models.DailyDataUsage, len(dailyUsage))
 	for i, u := range dailyUsage {
+		totalSummary.BytesIn += u.BytesIn
+		totalSummary.BytesOut += u.BytesOut
 		daily[i] = models.DailyDataUsage{
 			Date:     u.Date.Format("2006-01-02"),
 			BytesIn:  u.BytesIn,
@@ -69,17 +73,20 @@ func GetPhoneDataUsage(c *gin.Context) {
 			Total:    u.BytesIn + u.BytesOut,
 		}
 	}
+	totalSummary.Total = totalSummary.BytesIn + totalSummary.BytesOut
 
-	c.JSON(http.StatusOK, models.PhoneDataUsageDetail{
-		PhoneID:    phoneID.String(),
-		PhoneName:  phone.Name,
-		ThisMonth:  thisMonth,
-		LastMonth:  lastMonth,
-		DailyUsage: daily,
+	c.JSON(http.StatusOK, gin.H{
+		"phone_id":   phoneID.String(),
+		"phone_name": phone.Name,
+		"start_date": startDate.Format("2006-01-02"),
+		"end_date":   endDate.Format("2006-01-02"),
+		"total":      totalSummary,
+		"daily":      daily,
 	})
 }
 
 // GetPhoneUptime returns uptime stats for a specific phone
+// Supports optional query params: start_date, end_date (format: 2006-01-02)
 func GetPhoneUptime(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	phoneID, err := uuid.Parse(c.Param("id"))
@@ -97,8 +104,31 @@ func GetPhoneUptime(c *gin.Context) {
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	sevenDaysAgo := today.AddDate(0, 0, -7)
 	oneDayAgo := now.Add(-24 * time.Hour)
+
+	// Parse optional date range params (default: last 30 days)
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	var startDate, endDate time.Time
+	if startDateStr != "" {
+		if parsed, err := time.Parse("2006-01-02", startDateStr); err == nil {
+			startDate = parsed
+		}
+	}
+	if endDateStr != "" {
+		if parsed, err := time.Parse("2006-01-02", endDateStr); err == nil {
+			endDate = parsed
+		}
+	}
+
+	// Default to last 30 days
+	if startDate.IsZero() {
+		startDate = today.AddDate(0, 0, -30)
+	}
+	if endDate.IsZero() {
+		endDate = today
+	}
 
 	// Get current status
 	var lastLog models.PhoneUptimeLog
@@ -114,12 +144,12 @@ func GetPhoneUptime(c *gin.Context) {
 
 	last24Hours := calculateUptimeFromLogs(phoneID, logs24h, oneDayAgo, now)
 
-	// Get last 7 days from daily uptime records
+	// Get daily uptime for date range
 	var dailyUptimes []models.PhoneDailyUptime
-	database.DB.Where("phone_id = ? AND date >= ?", phoneID, sevenDaysAgo).
+	database.DB.Where("phone_id = ? AND date >= ? AND date <= ?", phoneID, startDate, endDate).
 		Order("date DESC").Find(&dailyUptimes)
 
-	// Calculate 7-day average
+	// Calculate average for the period
 	totalMinutes := 0
 	dayCount := 0
 	daily := []models.DailyUptime{}
@@ -134,19 +164,63 @@ func GetPhoneUptime(c *gin.Context) {
 		})
 	}
 
-	last7Days := 0.0
+	periodAverage := 0.0
 	if dayCount > 0 {
 		avgMinutes := float64(totalMinutes) / float64(dayCount)
-		last7Days = avgMinutes / 1440.0 * 100.0
+		periodAverage = avgMinutes / 1440.0 * 100.0
 	}
 
-	c.JSON(http.StatusOK, models.PhoneUptimeDetail{
-		PhoneID:       phoneID.String(),
-		PhoneName:     phone.Name,
-		Last24Hours:   last24Hours,
-		Last7Days:     last7Days,
-		CurrentStatus: currentStatus,
-		DailyUptime:   daily,
+	// Get hourly breakdown for the current day or selected single day
+	hourlyData := []gin.H{}
+	targetDate := today
+	if startDate.Equal(endDate) {
+		targetDate = startDate
+	}
+
+	// Get logs for the target day to calculate hourly uptime
+	dayStart := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, time.UTC)
+	dayEnd := dayStart.Add(24 * time.Hour)
+	var dayLogs []models.PhoneUptimeLog
+	database.DB.Where("phone_id = ? AND timestamp >= ? AND timestamp < ?", phoneID, dayStart, dayEnd).
+		Order("timestamp ASC").Find(&dayLogs)
+
+	// Calculate uptime for each hour
+	for hour := 0; hour < 24; hour++ {
+		hourStart := dayStart.Add(time.Duration(hour) * time.Hour)
+		hourEnd := hourStart.Add(time.Hour)
+		if hourEnd.After(now) {
+			hourEnd = now
+		}
+		if hourStart.After(now) {
+			break // Don't include future hours
+		}
+
+		// Filter logs for this hour
+		var hourLogs []models.PhoneUptimeLog
+		for _, log := range dayLogs {
+			if !log.Timestamp.Before(hourStart) && log.Timestamp.Before(hourEnd) {
+				hourLogs = append(hourLogs, log)
+			}
+		}
+
+		uptimePct := calculateUptimeFromLogs(phoneID, hourLogs, hourStart, hourEnd)
+		hourlyData = append(hourlyData, gin.H{
+			"hour":    hour,
+			"uptime":  uptimePct,
+			"minutes": int(uptimePct * 0.6), // 60 min * percentage / 100
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"phone_id":       phoneID.String(),
+		"phone_name":     phone.Name,
+		"start_date":     startDate.Format("2006-01-02"),
+		"end_date":       endDate.Format("2006-01-02"),
+		"last_24_hours":  last24Hours,
+		"period_average": periodAverage,
+		"current_status": currentStatus,
+		"daily":          daily,
+		"hourly":         hourlyData,
 	})
 }
 
@@ -215,23 +289,24 @@ func GetAllPhonesUsage(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// CleanupOldUsageData removes data older than last month
+// CleanupOldUsageData removes old data
+// Data usage: 90 days, Uptime: 30 days
 // Should be called periodically (e.g., daily cron job)
 func CleanupOldUsageData(c *gin.Context) {
 	now := time.Now()
-	startOfLastMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
-	sevenDaysAgo := now.AddDate(0, 0, -7)
+	ninetyDaysAgo := now.AddDate(0, 0, -90)
+	thirtyDaysAgo := now.AddDate(0, 0, -30)
 
-	// Delete data usage older than start of last month
-	result := database.DB.Where("date < ?", startOfLastMonth).Delete(&models.PhoneDataUsage{})
+	// Delete data usage older than 90 days
+	result := database.DB.Where("date < ?", ninetyDaysAgo).Delete(&models.PhoneDataUsage{})
 	deletedUsage := result.RowsAffected
 
-	// Delete uptime logs older than 7 days
-	result = database.DB.Where("timestamp < ?", sevenDaysAgo).Delete(&models.PhoneUptimeLog{})
+	// Delete uptime logs older than 30 days
+	result = database.DB.Where("timestamp < ?", thirtyDaysAgo).Delete(&models.PhoneUptimeLog{})
 	deletedLogs := result.RowsAffected
 
-	// Delete daily uptime older than 7 days
-	result = database.DB.Where("date < ?", sevenDaysAgo).Delete(&models.PhoneDailyUptime{})
+	// Delete daily uptime older than 30 days
+	result = database.DB.Where("date < ?", thirtyDaysAgo).Delete(&models.PhoneDailyUptime{})
 	deletedDaily := result.RowsAffected
 
 	// Delete old phone stats (keep last 24 hours)
