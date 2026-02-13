@@ -290,7 +290,7 @@ func GetAllPhonesUsage(c *gin.Context) {
 }
 
 // CleanupOldUsageData removes old data
-// Data usage: 90 days, Uptime: 30 days
+// Data usage: 90 days, Uptime: 30 days, Access logs: per-user setting (1-12 weeks)
 // Should be called periodically (e.g., daily cron job)
 func CleanupOldUsageData(c *gin.Context) {
 	now := time.Now()
@@ -314,13 +314,61 @@ func CleanupOldUsageData(c *gin.Context) {
 	result = database.DB.Where("recorded_at < ?", oneDayAgo).Delete(&models.PhoneStats{})
 	deletedStats := result.RowsAffected
 
+	// Clean access logs per-user based on their retention settings
+	deletedAccessLogs := cleanupAccessLogs()
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":              "Cleanup completed",
 		"deleted_usage":        deletedUsage,
 		"deleted_uptime_logs":  deletedLogs,
 		"deleted_daily_uptime": deletedDaily,
 		"deleted_stats":        deletedStats,
+		"deleted_access_logs":  deletedAccessLogs,
 	})
+}
+
+// cleanupAccessLogs removes old access logs based on per-phone retention settings
+func cleanupAccessLogs() int64 {
+	var totalDeleted int64
+
+	// Get all phones with their retention settings
+	var phones []models.Phone
+	database.DB.Select("id, log_retention_weeks").Find(&phones)
+
+	for _, phone := range phones {
+		// Default to 12 weeks if not set, cap at 12 weeks max
+		retentionWeeks := phone.LogRetentionWeeks
+		if retentionWeeks <= 0 {
+			retentionWeeks = 12
+		}
+		if retentionWeeks > 12 {
+			retentionWeeks = 12
+		}
+
+		cutoffDate := time.Now().AddDate(0, 0, -retentionWeeks*7)
+
+		// Delete access logs for this phone older than its retention period
+		result := database.DB.Where("phone_id = ? AND timestamp < ?", phone.ID, cutoffDate).
+			Delete(&models.AccessLog{})
+		totalDeleted += result.RowsAffected
+	}
+
+	// Also clean up orphaned access logs (phones that no longer exist) older than 1 week
+	oneWeekAgo := time.Now().AddDate(0, 0, -7)
+	var existingPhoneIDs []uuid.UUID
+	database.DB.Model(&models.Phone{}).Pluck("id", &existingPhoneIDs)
+
+	if len(existingPhoneIDs) > 0 {
+		result := database.DB.Where("phone_id NOT IN ? AND timestamp < ?", existingPhoneIDs, oneWeekAgo).
+			Delete(&models.AccessLog{})
+		totalDeleted += result.RowsAffected
+	} else {
+		// No phones exist, clean all old logs
+		result := database.DB.Where("timestamp < ?", oneWeekAgo).Delete(&models.AccessLog{})
+		totalDeleted += result.RowsAffected
+	}
+
+	return totalDeleted
 }
 
 // calculateUptimeFromLogs calculates uptime percentage from log entries

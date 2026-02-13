@@ -50,6 +50,9 @@ func Setup(cfg *config.Config) *gin.Engine {
 
 		// Bandwidth usage reporting - called every 30 seconds from hub-agent
 		internal.POST("/usage", handlers.ReportUsage)
+
+		// Access logs - called every 30 seconds from hub-agent
+		internal.POST("/access-logs", handlers.ReceiveAccessLogs)
 	}
 
 	// Hub heartbeat endpoints
@@ -144,6 +147,12 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.GET("/phones/:id/uptime", handlers.GetPhoneUptime)
 		api.GET("/usage/overview", handlers.GetAllPhonesUsage)
 
+		// Access Logs (per-phone)
+		api.GET("/phones/:id/access-logs", handlers.GetPhoneAccessLogs)
+		api.GET("/phones/:id/domain-stats", handlers.GetPhoneDomainStats)
+		api.GET("/phones/:id/log-retention", handlers.GetPhoneLogRetention)
+		api.PUT("/phones/:id/log-retention", handlers.UpdatePhoneLogRetention)
+
 		// Groups
 		api.GET("/groups", handlers.ListGroups)
 		api.POST("/groups", handlers.CreateGroup)
@@ -209,6 +218,10 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.PUT("/blocklist/:id", handlers.UpdateBlocklistEntry)
 			admin.DELETE("/blocklist/:id", handlers.DeleteBlocklistEntry)
 			admin.POST("/blocklist/seed", handlers.SeedDefaultBlocklist)
+
+			// Access Logs (all phones)
+			admin.GET("/access-logs", handlers.GetAllAccessLogs)
+			admin.GET("/access-logs/stats", handlers.GetAccessLogStats)
 
 			// Fleet Management - OTA Updates
 			admin.POST("/fleet/binary", handlers.UploadHubAgentBinary)    // Upload new binary

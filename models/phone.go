@@ -36,6 +36,9 @@ type Phone struct {
 	RotationMode            string `gorm:"default:'off'" json:"rotation_mode"`     // 'off', 'timed', 'api'
 	RotationIntervalMinutes int    `gorm:"default:0" json:"rotation_interval_minutes"` // 2-120 minutes (when mode is 'timed')
 
+	// Log retention settings
+	LogRetentionWeeks int `gorm:"default:12" json:"log_retention_weeks"` // Access log retention (1-12 weeks, default 12)
+
 	// SIM card info (updated via status updates)
 	SimCountry string `json:"sim_country"` // ISO country code (e.g., "US", "GB")
 	SimCarrier string `json:"sim_carrier"` // Carrier name
@@ -90,6 +93,7 @@ type PhoneResponse struct {
 	HubServer               HubServerResponse `json:"hub_server,omitempty"`
 	RotationMode            string            `json:"rotation_mode"`              // 'off', 'timed', 'api'
 	RotationIntervalMinutes int               `json:"rotation_interval_minutes"`  // 2-120 minutes
+	LogRetentionWeeks       int               `json:"log_retention_weeks"`        // 1-12 weeks
 	SimCountry              string            `json:"sim_country"`
 	SimCarrier              string            `json:"sim_carrier"`
 	CreatedAt               time.Time         `json:"created_at"`
@@ -116,6 +120,11 @@ type PhoneWithPairingCode struct {
 }
 
 func (p *Phone) ToResponse() PhoneResponse {
+	// Default to 12 weeks if not set
+	retention := p.LogRetentionWeeks
+	if retention <= 0 {
+		retention = 12
+	}
 	resp := PhoneResponse{
 		ID:                      p.ID,
 		Name:                    p.Name,
@@ -123,6 +132,7 @@ func (p *Phone) ToResponse() PhoneResponse {
 		ProxyDomain:             p.ProxyDomain,
 		RotationMode:            p.RotationMode,
 		RotationIntervalMinutes: p.RotationIntervalMinutes,
+		LogRetentionWeeks:       retention,
 		SimCountry:              p.SimCountry,
 		SimCarrier:              p.SimCarrier,
 		CreatedAt:               p.CreatedAt,

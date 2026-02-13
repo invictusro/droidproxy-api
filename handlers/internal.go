@@ -333,6 +333,65 @@ func mustParseUUID(s string) uuid.UUID {
 	return id
 }
 
+// ReceiveAccessLogs receives access logs from hub-agent
+// POST /api/internal/access-logs
+func ReceiveAccessLogs(c *gin.Context) {
+	var batch models.AccessLogBatchRequest
+	if err := c.ShouldBindJSON(&batch); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify hub exists
+	var server models.HubServer
+	if err := database.DB.Where("id = ?", batch.HubID).First(&server).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Hub not found"})
+		return
+	}
+
+	// Verify API key
+	apiKey := c.GetHeader("X-API-Key")
+	if apiKey == "" {
+		apiKey = c.GetHeader("X-Hub-API-Key")
+	}
+	if apiKey != server.HubAPIKey {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
+		return
+	}
+
+	// Batch insert access logs
+	if len(batch.Logs) > 0 {
+		accessLogs := make([]models.AccessLog, 0, len(batch.Logs))
+		for _, entry := range batch.Logs {
+			accessLogs = append(accessLogs, models.AccessLog{
+				CredentialID: mustParseUUID(entry.CredentialID),
+				PhoneID:      mustParseUUID(entry.PhoneID),
+				HubServerID:  mustParseUUID(batch.HubID),
+				ClientIP:     entry.ClientIP,
+				Domain:       entry.Domain,
+				Port:         entry.Port,
+				Protocol:     entry.Protocol,
+				BytesIn:      int64(entry.BytesIn),
+				BytesOut:     int64(entry.BytesOut),
+				DurationMS:   entry.DurationMS,
+				Blocked:      entry.Blocked,
+				Timestamp:    entry.Timestamp,
+			})
+		}
+
+		// Bulk insert
+		if err := database.DB.CreateInBatches(accessLogs, 100).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store access logs"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Access logs received",
+		"count":   len(batch.Logs),
+	})
+}
+
 // DownloadHubAgent serves the hub-agent binary for OTA updates
 // GET /api/hub/downloads/hub-agent
 // Protected by hub API key authentication
