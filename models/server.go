@@ -35,11 +35,12 @@ type HubServer struct {
 	LastCheckAt *time.Time `json:"-"`                      // Last health check
 
 	// Hub Agent telemetry (updated via heartbeat)
-	CPUPercent    float64    `json:"-"`
-	MemoryPercent float64    `json:"-"`
-	BandwidthIn   int64      `json:"-"` // bytes/sec
-	BandwidthOut  int64      `json:"-"` // bytes/sec
-	LastHeartbeat *time.Time `json:"-"`
+	CPUPercent     float64    `json:"-"`
+	MemoryPercent  float64    `json:"-"`
+	BandwidthIn    int64      `json:"-"` // bytes/sec
+	BandwidthOut   int64      `json:"-"` // bytes/sec
+	CurrentVersion string     `gorm:"type:varchar(20);default:'unknown'" json:"-"` // Hub agent version
+	LastHeartbeat  *time.Time `json:"-"`
 
 	// DNS routing fields (for dynamic proxy routing)
 	DNSSubdomain string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
@@ -93,6 +94,7 @@ type HubServerAdminResponse struct {
 	LastHeartbeat  *time.Time `json:"last_heartbeat,omitempty"`
 	CPUPercent     float64    `json:"cpu_percent,omitempty"`
 	MemoryPercent  float64    `json:"memory_percent,omitempty"`
+	CurrentVersion string     `json:"current_version,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	PhoneCount     int        `json:"phone_count"`
 }
@@ -129,6 +131,7 @@ func (s *HubServer) ToAdminResponse() HubServerAdminResponse {
 		LastHeartbeat:  s.LastHeartbeat,
 		CPUPercent:     s.CPUPercent,
 		MemoryPercent:  s.MemoryPercent,
+		CurrentVersion: s.CurrentVersion,
 		CreatedAt:      s.CreatedAt,
 		PhoneCount:     len(s.Phones),
 	}

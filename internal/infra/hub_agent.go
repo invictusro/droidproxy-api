@@ -155,6 +155,12 @@ func doHubAgentRequest(method, url, apiKey string, body interface{}) error {
 	return nil
 }
 
+// PostToHubAgent sends a POST request to a hub-agent endpoint
+// Used for OTA updates and other commands
+func PostToHubAgent(url, apiKey string, payload interface{}) error {
+	return doHubAgentRequest("POST", url, apiKey, payload)
+}
+
 // Install downloads and installs hub-agent on the remote server
 func (p *HubAgentProvisioner) Install(binaryURL, hubID, apiKey string, port int) error {
 	// Create directory

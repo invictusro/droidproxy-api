@@ -60,6 +60,9 @@ func Setup(cfg *config.Config) *gin.Engine {
 
 		// Connection logs - called every 60 seconds from hub-agent
 		hub.POST("/connections", handlers.HubConnectionLogs)
+
+		// Binary download for OTA updates (authenticated via X-API-Key header)
+		hub.GET("/downloads/hub-agent", handlers.DownloadHubAgent)
 	}
 
 	// Auth routes (no auth required)
@@ -206,6 +209,13 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.PUT("/blocklist/:id", handlers.UpdateBlocklistEntry)
 			admin.DELETE("/blocklist/:id", handlers.DeleteBlocklistEntry)
 			admin.POST("/blocklist/seed", handlers.SeedDefaultBlocklist)
+
+			// Fleet Management - OTA Updates
+			admin.POST("/fleet/binary", handlers.UploadHubAgentBinary)    // Upload new binary
+			admin.GET("/fleet/binary", handlers.GetLatestBinaryInfo)      // Get binary metadata
+			admin.GET("/fleet/versions", handlers.GetFleetVersions)       // Get version distribution
+			admin.POST("/fleet/update", handlers.TriggerFleetUpdate)      // Update all servers
+			admin.POST("/fleet/update/:id", handlers.UpdateSingleServer)  // Update single server
 		}
 	}
 

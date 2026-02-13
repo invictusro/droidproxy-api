@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/droidproxy/api/database"
@@ -169,6 +170,7 @@ func ReportHubReady(c *gin.Context) {
 func HubHeartbeat(c *gin.Context) {
 	var payload struct {
 		HubID             string    `json:"hub_id"`
+		Version           string    `json:"version"` // Hub agent version (OTA tracking)
 		Timestamp         time.Time `json:"timestamp"`
 		Health            struct {
 			CPUPercent    float64 `json:"cpu_percent"`
@@ -187,13 +189,20 @@ func HubHeartbeat(c *gin.Context) {
 
 	// Update hub server record
 	now := time.Now()
+	updates := map[string]interface{}{
+		"last_heartbeat": &now,
+		"cpu_percent":    payload.Health.CPUPercent,
+		"memory_percent": payload.Health.MemoryPercent,
+	}
+
+	// Include version if provided
+	if payload.Version != "" {
+		updates["current_version"] = payload.Version
+	}
+
 	database.DB.Model(&models.HubServer{}).
 		Where("id = ?", payload.HubID).
-		Updates(map[string]interface{}{
-			"last_heartbeat": &now,
-			"cpu_percent":    payload.Health.CPUPercent,
-			"memory_percent": payload.Health.MemoryPercent,
-		})
+		Updates(updates)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Heartbeat received"})
 }
@@ -322,4 +331,32 @@ func ReportUsage(c *gin.Context) {
 func mustParseUUID(s string) uuid.UUID {
 	id, _ := uuid.Parse(s)
 	return id
+}
+
+// DownloadHubAgent serves the hub-agent binary for OTA updates
+// GET /api/hub/downloads/hub-agent
+// Protected by hub API key authentication
+func DownloadHubAgent(c *gin.Context) {
+	// Verify hub authentication (X-API-Key header)
+	apiKey := c.GetHeader("X-API-Key")
+	if apiKey == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing API key"})
+		return
+	}
+
+	// Verify this is a valid hub key
+	var server models.HubServer
+	if err := database.DB.Where("hub_api_key = ?", apiKey).First(&server).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
+		return
+	}
+
+	// Serve the binary
+	binaryPath := "/app/binaries/hub-agent-linux-amd64"
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Binary not found"})
+		return
+	}
+
+	c.FileAttachment(binaryPath, "hub-agent")
 }

@@ -1,10 +1,17 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
 	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/infra"
@@ -900,5 +907,266 @@ func ProvisionServer(c *gin.Context) {
 		"message":      "Hub Agent installed successfully",
 		"hub_api_port": hubAPIPort,
 		"server":       server.ToAdminResponse(),
+	})
+}
+
+// ============================================================================
+// Fleet Management - OTA Update System
+// ============================================================================
+
+const binaryDir = "/app/binaries"
+
+// UploadHubAgentBinary allows admin to upload a new hub-agent binary
+// POST /api/admin/fleet/binary
+func UploadHubAgentBinary(c *gin.Context) {
+	// Get uploaded file
+	file, header, err := c.Request.FormFile("binary")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+	defer file.Close()
+
+	// Get version from form
+	version := c.PostForm("version")
+	if version == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Version is required"})
+		return
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(binaryDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create binary directory"})
+		return
+	}
+
+	// Write to file
+	binaryPath := filepath.Join(binaryDir, "hub-agent-linux-amd64")
+	out, err := os.Create(binaryPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create file: " + err.Error()})
+		return
+	}
+	defer out.Close()
+
+	written, err := io.Copy(out, file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write file"})
+		return
+	}
+
+	// Make executable
+	os.Chmod(binaryPath, 0755)
+
+	// Store version metadata
+	metadata := map[string]interface{}{
+		"version":     version,
+		"uploaded_at": time.Now().UTC().Format(time.RFC3339),
+		"size":        written,
+		"filename":    header.Filename,
+	}
+	metadataPath := filepath.Join(binaryDir, "metadata.json")
+	metadataJSON, _ := json.Marshal(metadata)
+	os.WriteFile(metadataPath, metadataJSON, 0644)
+
+	log.Printf("[UploadHubAgentBinary] Uploaded binary version %s (%d bytes)", version, written)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Binary uploaded successfully",
+		"version": version,
+		"size":    written,
+		"path":    binaryPath,
+	})
+}
+
+// GetLatestBinaryInfo returns metadata about the current binary
+// GET /api/admin/fleet/binary
+func GetLatestBinaryInfo(c *gin.Context) {
+	metadataPath := filepath.Join(binaryDir, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No binary uploaded yet"})
+		return
+	}
+
+	var metadata map[string]interface{}
+	json.Unmarshal(data, &metadata)
+	c.JSON(http.StatusOK, metadata)
+}
+
+// GetFleetVersions returns version distribution across fleet
+// GET /api/admin/fleet/versions
+func GetFleetVersions(c *gin.Context) {
+	var results []struct {
+		Version string `json:"version"`
+		Count   int64  `json:"count"`
+	}
+
+	database.DB.Model(&models.HubServer{}).
+		Select("current_version as version, count(*) as count").
+		Where("is_active = ?", true).
+		Group("current_version").
+		Scan(&results)
+
+	// Get latest version from metadata
+	latestVersion := ""
+	metadataPath := filepath.Join(binaryDir, "metadata.json")
+	if data, err := os.ReadFile(metadataPath); err == nil {
+		var metadata map[string]interface{}
+		json.Unmarshal(data, &metadata)
+		if v, ok := metadata["version"].(string); ok {
+			latestVersion = v
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"versions":       results,
+		"latest_version": latestVersion,
+	})
+}
+
+// TriggerFleetUpdate sends update command to all hubs not on target version
+// POST /api/admin/fleet/update
+func TriggerFleetUpdate(c *gin.Context) {
+	var req struct {
+		TargetVersion string `json:"target_version"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// If no version specified, get latest from metadata
+	targetVersion := req.TargetVersion
+	if targetVersion == "" {
+		metadataPath := filepath.Join(binaryDir, "metadata.json")
+		if data, err := os.ReadFile(metadataPath); err == nil {
+			var metadata map[string]interface{}
+			json.Unmarshal(data, &metadata)
+			if v, ok := metadata["version"].(string); ok {
+				targetVersion = v
+			}
+		}
+		if targetVersion == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No target version specified and no binary uploaded"})
+			return
+		}
+	}
+
+	downloadURL := fmt.Sprintf("%s/hub/downloads/hub-agent", config.AppConfig.APIBaseURL)
+
+	// Get hubs not on target version
+	var servers []models.HubServer
+	database.DB.Where("current_version != ? AND is_active = ? AND hub_api_key != ''", targetVersion, true).Find(&servers)
+
+	if len(servers) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "All hubs already on target version",
+			"updated": 0,
+		})
+		return
+	}
+
+	// Send update command to each hub concurrently
+	var wg sync.WaitGroup
+	results := make(chan string, len(servers))
+
+	for _, server := range servers {
+		wg.Add(1)
+		go func(s models.HubServer) {
+			defer wg.Done()
+
+			hubURL := fmt.Sprintf("http://%s:%d/update", s.IP, s.HubAPIPort)
+			payload := map[string]string{
+				"download_url":     downloadURL,
+				"expected_version": targetVersion,
+			}
+
+			err := infra.PostToHubAgent(hubURL, s.HubAPIKey, payload)
+			if err != nil {
+				results <- fmt.Sprintf("%s: failed - %v", s.Name, err)
+			} else {
+				results <- fmt.Sprintf("%s: triggered", s.Name)
+			}
+		}(server)
+	}
+
+	wg.Wait()
+	close(results)
+
+	var statuses []string
+	for r := range results {
+		statuses = append(statuses, r)
+	}
+
+	log.Printf("[TriggerFleetUpdate] Update to %s triggered for %d hubs", targetVersion, len(servers))
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        fmt.Sprintf("Update triggered for %d hubs", len(servers)),
+		"target_version": targetVersion,
+		"statuses":       statuses,
+	})
+}
+
+// UpdateSingleServer sends update command to a specific hub
+// POST /api/admin/fleet/update/:id
+func UpdateSingleServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	var server models.HubServer
+	if err := database.DB.First(&server, "id = ?", serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+
+	if server.HubAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Hub Agent not configured for this server"})
+		return
+	}
+
+	// Get latest binary metadata
+	metadataPath := filepath.Join(binaryDir, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No binary uploaded"})
+		return
+	}
+	var metadata map[string]interface{}
+	json.Unmarshal(data, &metadata)
+	targetVersion, ok := metadata["version"].(string)
+	if !ok || targetVersion == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid binary metadata"})
+		return
+	}
+
+	if server.CurrentVersion == targetVersion {
+		c.JSON(http.StatusOK, gin.H{"message": "Already on latest version", "version": targetVersion})
+		return
+	}
+
+	downloadURL := fmt.Sprintf("%s/hub/downloads/hub-agent", config.AppConfig.APIBaseURL)
+	hubURL := fmt.Sprintf("http://%s:%d/update", server.IP, server.HubAPIPort)
+
+	payload := map[string]string{
+		"download_url":     downloadURL,
+		"expected_version": targetVersion,
+	}
+
+	err = infra.PostToHubAgent(hubURL, server.HubAPIKey, payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[UpdateSingleServer] Update to %s triggered for %s", targetVersion, server.Name)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "Update triggered",
+		"server":         server.Name,
+		"target_version": targetVersion,
 	})
 }
