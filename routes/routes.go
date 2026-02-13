@@ -40,7 +40,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 
 	// Internal hub-agent endpoints (authenticated via X-Hub-API-Key header)
 	// These endpoints are for hub-to-API communication (sync state, usage reporting, heartbeat)
-	internal := r.Group("/api/internal")
+	internal := r.Group("/internal")
 	{
 		// Hub sync state - called on hub-agent startup for reboot recovery
 		internal.GET("/hubs/:id/sync-state", handlers.GetHubSyncState)
@@ -52,8 +52,8 @@ func Setup(cfg *config.Config) *gin.Engine {
 		internal.POST("/usage", handlers.ReportUsage)
 	}
 
-	// Hub heartbeat endpoints (legacy path for backwards compatibility)
-	hub := r.Group("/api/hub")
+	// Hub heartbeat endpoints
+	hub := r.Group("/hub")
 	{
 		// Heartbeat - called every 10 seconds from hub-agent
 		hub.POST("/heartbeat", handlers.HubHeartbeat)
@@ -72,22 +72,21 @@ func Setup(cfg *config.Config) *gin.Engine {
 	}
 
 	// Phone pairing routes (no auth required - uses pairing code/credentials)
-	r.POST("/api/pair", handlers.PairPhone)                        // QR + PIN method
-	r.GET("/api/phones/available", handlers.GetUserPhonesForLogin) // Get unpaired phones for login
-	r.POST("/api/phone-login", handlers.PhoneLogin)                // Email/password method
-	r.POST("/api/heartbeat", handlers.Heartbeat)
+	r.POST("/pair", handlers.PairPhone)                        // QR + PIN method
+	r.GET("/phones/available", handlers.GetUserPhonesForLogin) // Get unpaired phones for login
+	r.POST("/phone-login", handlers.PhoneLogin)                // Email/password method
+	r.POST("/heartbeat", handlers.Heartbeat)
 
 	// Public rotation API (uses rotation token, no user auth)
-	r.GET("/api/rotate/:token", handlers.RotateIPByToken)
-	r.POST("/api/rotate/:token", handlers.RotateIPByToken)
+	r.GET("/rotate/:token", handlers.RotateIPByToken)
+	r.POST("/rotate/:token", handlers.RotateIPByToken)
 
 	// Centrifugo proxy endpoint (updates database when phones publish status)
-	r.POST("/api/centrifugo/publish", handlers.CentrifugoPublishProxy)
-
+	r.POST("/centrifugo/publish", handlers.CentrifugoPublishProxy)
 
 	// Phone-authenticated routes (requires X-Phone-ID and X-Phone-Token headers)
 	// These endpoints are exclusively for paired phones
-	phoneAPI := r.Group("/api/phone")
+	phoneAPI := r.Group("/phone")
 	phoneAPI.Use(middleware.PhoneAuthRequired())
 	{
 		// Read-only endpoints - token auth is sufficient
@@ -104,8 +103,8 @@ func Setup(cfg *config.Config) *gin.Engine {
 		}
 	}
 
-	// Protected API routes
-	api := r.Group("/api")
+	// Protected routes (user auth required)
+	api := r.Group("")
 	api.Use(middleware.AuthRequired())
 	{
 		// User info
