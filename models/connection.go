@@ -57,6 +57,9 @@ type ConnectionCredential struct {
 	// Port - each credential gets its own port
 	Port int `json:"port"`
 
+	// UDP Support - only for SOCKS5, opt-in per credential
+	UdpEnabled bool `gorm:"default:false" json:"udp_enabled"`
+
 	// Status
 	IsActive  bool       `gorm:"default:true" json:"is_active"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`
@@ -91,6 +94,7 @@ type ConnectionCredentialResponse struct {
 	ProxyDomain     string     `json:"proxy_domain,omitempty"` // e.g., "abc123.cn.yalx.in"
 	BlockedDomains  []string   `json:"blocked_domains,omitempty"`
 	Port            int        `json:"port"`
+	UdpEnabled      bool       `json:"udp_enabled"`
 	IsActive        bool       `json:"is_active"`
 	LastUsed        *time.Time `json:"last_used,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -113,6 +117,7 @@ func (c *ConnectionCredential) ToResponse() ConnectionCredentialResponse {
 		ProxyDomain:     c.ProxyDomain,
 		BlockedDomains:  c.BlockedDomains,
 		Port:            c.Port,
+		UdpEnabled:      c.UdpEnabled,
 		IsActive:        c.IsActive,
 		LastUsed:        c.LastUsed,
 		CreatedAt:       c.CreatedAt,
@@ -191,6 +196,7 @@ type CreateCredentialRequest struct {
 	Password       string    `json:"password"`
 	BandwidthLimit int64     `json:"bandwidth_limit"`
 	ExpiresAt      string    `json:"expires_at"`
+	UdpEnabled     bool      `json:"udp_enabled"` // Enable UDP ASSOCIATE for SOCKS5
 }
 
 type UpdateCredentialRequest struct {
@@ -203,4 +209,5 @@ type UpdateCredentialRequest struct {
 	ExpiresAt      *string    `json:"expires_at"`
 	IsActive       *bool      `json:"is_active"`
 	BlockedDomains *[]string  `json:"blocked_domains"` // Patterns: "example.com", "*.example.com", "example.com:443"
+	UdpEnabled     *bool      `json:"udp_enabled"`     // Enable UDP ASSOCIATE for SOCKS5
 }

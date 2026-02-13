@@ -113,6 +113,7 @@ func CreateCredential(c *gin.Context) {
 		Username:       req.Username,
 		BandwidthLimit: req.BandwidthLimit,
 		Port:           credentialPort,
+		UdpEnabled:     req.UdpEnabled, // UDP ASSOCIATE support (SOCKS5 only)
 		IsActive:       true,
 	}
 
@@ -245,6 +246,9 @@ func UpdateCredential(c *gin.Context) {
 	}
 	if req.BlockedDomains != nil {
 		credential.BlockedDomains = *req.BlockedDomains
+	}
+	if req.UdpEnabled != nil {
+		credential.UdpEnabled = *req.UdpEnabled
 	}
 
 	if err := database.DB.Save(&credential).Error; err != nil {
@@ -598,6 +602,7 @@ func startCredentialProxy(phone *models.Phone, credential *models.ConnectionCred
 		"id":          credential.ID.String(),
 		"auth_type":   string(credential.AuthType),
 		"limit_bytes": credential.BandwidthLimit,
+		"udp_enabled": credential.UdpEnabled,
 	}
 
 	if credential.AuthType == models.AuthTypeIP && credential.AllowedIP != "" {
@@ -683,6 +688,7 @@ func updateCredentialProxy(phone *models.Phone, credential *models.ConnectionCre
 		"id":          credential.ID.String(),
 		"auth_type":   string(credential.AuthType),
 		"limit_bytes": credential.BandwidthLimit,
+		"udp_enabled": credential.UdpEnabled,
 	}
 
 	if credential.AuthType == models.AuthTypeIP && credential.AllowedIP != "" {

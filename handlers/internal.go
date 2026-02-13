@@ -24,6 +24,7 @@ type SyncCredential struct {
 	PasswordHash   string   `json:"password_hash,omitempty"`
 	LimitBytes     uint64   `json:"limit_bytes"`
 	BlockedDomains []string `json:"blocked_domains,omitempty"`
+	UdpEnabled     bool     `json:"udp_enabled"` // Enable UDP ASSOCIATE for SOCKS5
 }
 
 type SyncProxy struct {
@@ -108,6 +109,7 @@ func GetHubSyncState(c *gin.Context) {
 					AuthType:       string(cred.AuthType),
 					LimitBytes:     uint64(cred.BandwidthLimit),
 					BlockedDomains: cred.BlockedDomains,
+					UdpEnabled:     cred.UdpEnabled,
 				}
 
 				if cred.AuthType == models.AuthTypeIP {
