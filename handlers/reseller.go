@@ -38,7 +38,7 @@ type ResellerCredentialResponse struct {
 	ID             uuid.UUID `json:"id"`
 	Name           string    `json:"name"`
 	AuthType       string    `json:"auth_type"` // ip, userpass
-	ProxyType      string    `json:"proxy_type"` // socks5, http, both
+	ProxyType      string    `json:"proxy_type"` // socks5 or http
 	Username       string    `json:"username,omitempty"`
 	Password       string    `json:"password,omitempty"` // Only on creation
 	AllowedIP      string    `json:"allowed_ip,omitempty"`
@@ -224,7 +224,7 @@ func CreateResellerCredential(c *gin.Context) {
 	var req struct {
 		Name           string `json:"name" binding:"required"`
 		AuthType       string `json:"auth_type" binding:"required"` // ip, userpass
-		ProxyType      string `json:"proxy_type"`                    // socks5, http, both (default: socks5)
+		ProxyType      string `json:"proxy_type"`                    // socks5 or http (default: socks5)
 		AllowedIP      string `json:"allowed_ip"`                    // Required if auth_type is 'ip'
 		Username       string `json:"username"`                      // Optional for userpass
 		BandwidthLimit int64  `json:"bandwidth_limit"`               // In bytes, 0 = unlimited
@@ -245,8 +245,8 @@ func CreateResellerCredential(c *gin.Context) {
 	if req.ProxyType == "" {
 		req.ProxyType = "socks5"
 	}
-	if req.ProxyType != "socks5" && req.ProxyType != "http" && req.ProxyType != "both" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "proxy_type must be 'socks5', 'http', or 'both'"})
+	if req.ProxyType != "socks5" && req.ProxyType != "http" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "proxy_type must be 'socks5' or 'http'"})
 		return
 	}
 
@@ -606,20 +606,18 @@ func credentialToResellerResponse(cred *models.ConnectionCredential, phone *mode
 		CreatedAt:      cred.CreatedAt.Format(time.RFC3339),
 	}
 
-	// Build connection URLs
+	// Build connection URL based on proxy type
 	if proxyHost != "" && cred.Port > 0 {
 		if cred.AuthType == "userpass" {
-			if cred.ProxyType == "socks5" || cred.ProxyType == "both" {
+			if cred.ProxyType == "socks5" {
 				response.SOCKS5URL = fmt.Sprintf("socks5://%s:PASSWORD@%s:%d", cred.Username, proxyHost, cred.Port)
-			}
-			if cred.ProxyType == "http" || cred.ProxyType == "both" {
+			} else if cred.ProxyType == "http" {
 				response.HTTPURL = fmt.Sprintf("http://%s:PASSWORD@%s:%d", cred.Username, proxyHost, cred.Port)
 			}
 		} else {
-			if cred.ProxyType == "socks5" || cred.ProxyType == "both" {
+			if cred.ProxyType == "socks5" {
 				response.SOCKS5URL = fmt.Sprintf("socks5://%s:%d", proxyHost, cred.Port)
-			}
-			if cred.ProxyType == "http" || cred.ProxyType == "both" {
+			} else if cred.ProxyType == "http" {
 				response.HTTPURL = fmt.Sprintf("http://%s:%d", proxyHost, cred.Port)
 			}
 		}
