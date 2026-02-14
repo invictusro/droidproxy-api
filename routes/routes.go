@@ -132,6 +132,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.DELETE("/phones/:id", handlers.DeletePhone)
 		api.POST("/phones/:id/rotate-ip", handlers.RotateIP)
 		api.POST("/phones/:id/restart", handlers.RestartProxy)
+		api.POST("/phones/:id/repair", handlers.RepairPhone)
 		api.POST("/phones/:id/setup-dns", handlers.SetupPhoneDNS)
 		api.GET("/phones/:id/stats", handlers.GetPhoneStats)
 

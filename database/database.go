@@ -50,6 +50,7 @@ func Migrate() error {
 		&models.AccessLog{},
 		&models.PhoneLicense{},
 		&models.BalanceTransaction{},
+		&models.SystemSetting{},
 	)
 	if err != nil {
 		return err

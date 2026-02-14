@@ -2,7 +2,6 @@ package infra
 
 import (
 	"fmt"
-	"strings"
 )
 
 // WireGuardManager manages WireGuard configuration on servers
@@ -161,37 +160,3 @@ func (w *WireGuardManager) GenerateKeyPair() (privateKey, publicKey string, err 
 	return privateKey, publicKey, nil
 }
 
-// GetNextAvailableIP finds the next available IP in the WireGuard /16 network
-func (w *WireGuardManager) GetNextAvailableIP(networkPrefix string) (string, error) {
-	// Get list of used IPs from wg show
-	result, err := w.client.Run("wg show wg0 allowed-ips 2>/dev/null | awk '{print $2}' | cut -d'/' -f1")
-	if err != nil {
-		// WireGuard might not be running, start with .0.2
-		return fmt.Sprintf("%s.0.2", networkPrefix), nil
-	}
-
-	usedIPs := strings.Split(result.Stdout, "\n")
-	usedSet := make(map[string]bool)
-	for _, ip := range usedIPs {
-		ip = strings.TrimSpace(ip)
-		if ip != "" {
-			usedSet[ip] = true
-		}
-	}
-
-	// Find first available IP in /16 range (server is .0.1, phones start at .0.2)
-	for third := 0; third <= 255; third++ {
-		startFourth := 2
-		if third > 0 {
-			startFourth = 1
-		}
-		for fourth := startFourth; fourth <= 254; fourth++ {
-			ip := fmt.Sprintf("%s.%d.%d", networkPrefix, third, fourth)
-			if !usedSet[ip] {
-				return ip, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no available IPs in network %s.0.0/16", networkPrefix)
-}

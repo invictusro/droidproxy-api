@@ -8,6 +8,7 @@ import (
 
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/allocator"
 	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/infra"
 	phonecomm "github.com/droidproxy/api/internal/phone"
@@ -403,21 +404,23 @@ func PairPhone(c *gin.Context) {
 	phone.DeviceFingerprint = fingerprintHash
 	database.DB.Save(&phone)
 
-	// Add WireGuard peer to hub server
+	// Add WireGuard peer to hub server (synchronous - must succeed for proxy to work)
 	if phone.HubServer != nil && phone.WireGuardPublicKey != "" && phone.WireGuardIP != "" {
-		go func() {
-			if err := infra.AddWireGuardPeerV2(
-				phone.HubServer.IP,
-				phone.HubServer.HubAPIPort,
-				phone.HubServer.HubAPIKey,
-				phone.WireGuardPublicKey,
-				phone.WireGuardIP+"/32",
-			); err != nil {
-				log.Printf("[PairPhone] Failed to add WireGuard peer for phone %s: %v", phone.ID, err)
-			} else {
-				log.Printf("[PairPhone] Added WireGuard peer for phone %s (IP: %s)", phone.ID, phone.WireGuardIP)
-			}
-		}()
+		if err := infra.AddWireGuardPeerV2(
+			phone.HubServer.IP,
+			phone.HubServer.HubAPIPort,
+			phone.HubServer.HubAPIKey,
+			phone.WireGuardPublicKey,
+			phone.WireGuardIP+"/32",
+		); err != nil {
+			log.Printf("[PairPhone] Failed to add WireGuard peer for phone %s: %v", phone.ID, err)
+			// Don't fail pairing, but log the error - phone can still pair but proxy won't work until repaired
+		} else {
+			log.Printf("[PairPhone] Added WireGuard peer for phone %s (IP: %s)", phone.ID, phone.WireGuardIP)
+		}
+	} else {
+		log.Printf("[PairPhone] WARNING: Cannot add WireGuard peer - HubServer=%v, PublicKey=%s, IP=%s",
+			phone.HubServer != nil, phone.WireGuardPublicKey != "", phone.WireGuardIP != "")
 	}
 
 	// Generate Centrifugo token for this phone
@@ -824,21 +827,22 @@ func PhoneLogin(c *gin.Context) {
 	phone.DeviceFingerprint = fingerprintHash
 	database.DB.Save(&phone)
 
-	// Add WireGuard peer to hub server
+	// Add WireGuard peer to hub server (synchronous - must succeed for proxy to work)
 	if phone.HubServer != nil && phone.WireGuardPublicKey != "" && phone.WireGuardIP != "" {
-		go func() {
-			if err := infra.AddWireGuardPeerV2(
-				phone.HubServer.IP,
-				phone.HubServer.HubAPIPort,
-				phone.HubServer.HubAPIKey,
-				phone.WireGuardPublicKey,
-				phone.WireGuardIP+"/32",
-			); err != nil {
-				log.Printf("[PairPhoneManual] Failed to add WireGuard peer for phone %s: %v", phone.ID, err)
-			} else {
-				log.Printf("[PairPhoneManual] Added WireGuard peer for phone %s (IP: %s)", phone.ID, phone.WireGuardIP)
-			}
-		}()
+		if err := infra.AddWireGuardPeerV2(
+			phone.HubServer.IP,
+			phone.HubServer.HubAPIPort,
+			phone.HubServer.HubAPIKey,
+			phone.WireGuardPublicKey,
+			phone.WireGuardIP+"/32",
+		); err != nil {
+			log.Printf("[PairPhoneManual] Failed to add WireGuard peer for phone %s: %v", phone.ID, err)
+		} else {
+			log.Printf("[PairPhoneManual] Added WireGuard peer for phone %s (IP: %s)", phone.ID, phone.WireGuardIP)
+		}
+	} else {
+		log.Printf("[PairPhoneManual] WARNING: Cannot add WireGuard peer - HubServer=%v, PublicKey=%s, IP=%s",
+			phone.HubServer != nil, phone.WireGuardPublicKey != "", phone.WireGuardIP != "")
 	}
 
 	// Generate Centrifugo token for this phone
@@ -1043,6 +1047,104 @@ func UpdatePhoneBlockedDomains(c *gin.Context) {
 	})
 }
 
+// RepairPhone re-syncs WireGuard peer and all credential proxies for a phone
+// Used to fix phones that were paired before hub-agent integration was complete
+func RepairPhone(c *gin.Context) {
+	user := middleware.GetCurrentUser(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var phone models.Phone
+	query := database.DB.Preload("HubServer")
+	if user.Role != "admin" {
+		query = query.Where("user_id = ?", user.ID)
+	}
+	if err := query.First(&phone, "id = ?", phoneID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	if phone.HubServer == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone has no hub server assigned"})
+		return
+	}
+
+	if phone.WireGuardPublicKey == "" || phone.WireGuardIP == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone has no WireGuard configuration"})
+		return
+	}
+
+	results := make(map[string]interface{})
+
+	// 1. Re-add WireGuard peer
+	if err := infra.AddWireGuardPeerV2(
+		phone.HubServer.IP,
+		phone.HubServer.HubAPIPort,
+		phone.HubServer.HubAPIKey,
+		phone.WireGuardPublicKey,
+		phone.WireGuardIP+"/32",
+	); err != nil {
+		results["wireguard"] = fmt.Sprintf("failed: %v", err)
+	} else {
+		results["wireguard"] = "ok"
+	}
+
+	// 2. Re-start all credential proxies
+	var credentials []models.ConnectionCredential
+	database.DB.Where("phone_id = ? AND is_active = ?", phone.ID, true).Find(&credentials)
+
+	credentialResults := make([]map[string]interface{}, 0)
+	for _, cred := range credentials {
+		credResult := map[string]interface{}{
+			"port": cred.Port,
+			"name": cred.Name,
+		}
+
+		// Build credential map for proxy config
+		credMap := map[string]interface{}{
+			"auth_type": cred.AuthType,
+		}
+		if cred.AuthType == models.AuthTypeUserPass {
+			credMap["username"] = cred.Username
+			credMap["password"] = cred.Password
+		} else if cred.AuthType == models.AuthTypeIP {
+			credMap["allowed_ip"] = cred.AllowedIP
+		}
+
+		proxyConfig := map[string]interface{}{
+			"phone_id":         phone.ID.String(),
+			"port":             cred.Port,
+			"target_ip":        phone.WireGuardIP,
+			"target_port":      1080,
+			"credentials":      []map[string]interface{}{credMap},
+			"speed_limit_mbps": phone.SpeedLimitMbps,
+			"max_connections":  phone.MaxConnections,
+		}
+
+		if err := infra.StartProxyV2(
+			phone.HubServer.IP,
+			phone.HubServer.HubAPIPort,
+			phone.HubServer.HubAPIKey,
+			proxyConfig,
+		); err != nil {
+			credResult["status"] = fmt.Sprintf("failed: %v", err)
+		} else {
+			credResult["status"] = "ok"
+		}
+		credentialResults = append(credentialResults, credResult)
+	}
+	results["credentials"] = credentialResults
+
+	log.Printf("[RepairPhone] Repaired phone %s: %+v", phone.ID, results)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Phone repair completed",
+		"results": results,
+	})
+}
+
 // Helper functions
 
 func generateWireGuardConfig(phone *models.Phone) string {
@@ -1067,16 +1169,15 @@ func generateWireGuardConfig(phone *models.Phone) string {
 		serverPublicKey = "SERVER_KEY_NOT_CONFIGURED"
 	}
 
-	// Get next available WireGuard IP from server
-	wireGuardIP, err := getNextWireGuardIP(phone.HubServer)
+	// Get next available WireGuard IP from global allocator
+	wireGuardIP, err := allocator.AllocateWireGuardIP()
 	if err != nil {
 		log.Printf("[WireGuard] Failed to allocate IP: %v", err)
 		return ""
 	}
 	phone.WireGuardIP = wireGuardIP
 
-	// Add this phone as a WireGuard peer on the server via SSH
-	go addWireGuardPeerToServer(phone.HubServer, keyPair.PublicKey, wireGuardIP)
+	// Note: WireGuard peer is added via hub-agent API after phone save (in PairPhone/PairPhoneManual)
 
 	return fmt.Sprintf(`[Interface]
 PrivateKey = %s
@@ -1089,60 +1190,6 @@ Endpoint = %s:%d
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 `, keyPair.PrivateKey, wireGuardIP, serverPublicKey, phone.HubServer.IP, phone.HubServer.WireGuardPort)
-}
-
-// getNextWireGuardIP finds the next available WireGuard IP for a hub server
-// Uses 10.66.0.0/16 subnet (server is 10.66.0.1)
-// Range: 10.66.0.2 - 10.66.255.254 = 65,533 phones per hub server
-func getNextWireGuardIP(server *models.HubServer) (string, error) {
-	// Get all used WireGuard IPs for this hub server
-	var usedIPs []string
-	database.DB.Model(&models.Phone{}).Where("hub_server_id = ?", server.ID).Pluck("wire_guard_ip", &usedIPs)
-
-	usedSet := make(map[string]bool)
-	for _, ip := range usedIPs {
-		if ip != "" {
-			usedSet[ip] = true
-		}
-	}
-
-	// Find first available IP in 10.66.0.0/16 (server is 10.66.0.1, phones start at 10.66.0.2)
-	// Range: 10.66.0.2 - 10.66.255.254 = 65,533 IPs per server
-	for third := 0; third <= 255; third++ {
-		startFourth := 2
-		if third > 0 {
-			startFourth = 1 // Only skip .0 and .1 in first octet
-		}
-		for fourth := startFourth; fourth <= 254; fourth++ {
-			ip := fmt.Sprintf("10.66.%d.%d", third, fourth)
-			if !usedSet[ip] {
-				return ip, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no available WireGuard IPs on server %s (all 65,533 IPs exhausted)", server.Name)
-}
-
-// addWireGuardPeerToServer adds the phone as a WireGuard peer on the hub server
-func addWireGuardPeerToServer(server *models.HubServer, publicKey, ip string) {
-	if server.SSHPassword == "" {
-		return // No SSH credentials configured
-	}
-
-	client := infra.NewSSHClient(server.IP, server.SSHPort, server.SSHUser, server.SSHPassword)
-	if err := client.Connect(); err != nil {
-		fmt.Printf("[WireGuard] Failed to connect to server %s: %v\n", server.Name, err)
-		return
-	}
-	defer client.Close()
-
-	wgManager := infra.NewWireGuardManager(client)
-	if err := wgManager.AddPeer(publicKey, ip); err != nil {
-		fmt.Printf("[WireGuard] Failed to add peer %s: %v\n", ip, err)
-	} else {
-		fmt.Printf("[WireGuard] Added peer %s to server %s\n", ip, server.Name)
-	}
 }
 
 // cleanupPhoneServerResources removes proxy and WireGuard peer for a phone using hub-agent V2 API

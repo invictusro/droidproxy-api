@@ -6,6 +6,7 @@ import (
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
 	"github.com/droidproxy/api/handlers"
+	"github.com/droidproxy/api/internal/allocator"
 	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/jobs"
@@ -30,6 +31,12 @@ func main() {
 	if err := database.Migrate(); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
+
+	// Initialize global IP/port allocator
+	if err := allocator.InitializeSettings(); err != nil {
+		log.Fatalf("Failed to initialize allocator: %v", err)
+	}
+	log.Println("Global allocator initialized")
 
 	// Initialize OAuth
 	handlers.InitOAuth(cfg)

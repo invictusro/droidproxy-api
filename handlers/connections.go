@@ -3,12 +3,12 @@ package handlers
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"time"
 
 	"github.com/droidproxy/api/config"
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/allocator"
 	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/infra"
 	phonecomm "github.com/droidproxy/api/internal/phone"
@@ -18,11 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	// Port range for per-credential proxies (separate from phone ports 20001-20100)
-	CredentialPortStart = 10000
-	CredentialPortEnd   = 19999
-)
 
 // ListCredentials returns all connection credentials for a phone
 func ListCredentials(c *gin.Context) {
@@ -97,10 +92,10 @@ func CreateCredential(c *gin.Context) {
 		return
 	}
 
-	// Allocate a unique port for this credential
-	credentialPort, err := getNextAvailableCredentialPort(phone.HubServer)
+	// Allocate a globally unique port for this credential
+	credentialPort, err := allocator.AllocateProxyPort()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available on this server"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No ports available: " + err.Error()})
 		return
 	}
 
@@ -165,17 +160,23 @@ func CreateCredential(c *gin.Context) {
 	// Load server relationship for proxy setup
 	database.DB.Preload("HubServer").First(&phone, "id = ?", phone.ID)
 
-	// Start proxy for this credential on its assigned port
-	go startCredentialProxy(&phone, &credential)
+	// Start proxy for this credential on its assigned port (synchronous - report errors)
+	proxyErr := startCredentialProxy(&phone, &credential)
+	if proxyErr != nil {
+		log.Printf("[CreateCredential] Failed to start proxy for credential %s: %v", credential.ID, proxyErr)
+	}
 
 	// Return response with plain password (only on creation)
 	response := models.ConnectionCredentialWithPassword{
 		ConnectionCredentialResponse: credential.ToResponse(),
 		Password:                     req.Password, // Include plain password for user to copy
 	}
-	c.JSON(http.StatusCreated, gin.H{
-		"credential": response,
-	})
+
+	result := gin.H{"credential": response}
+	if proxyErr != nil {
+		result["proxy_warning"] = fmt.Sprintf("Proxy setup failed: %v. The credential was created but may not work until the phone reconnects.", proxyErr)
+	}
+	c.JSON(http.StatusCreated, result)
 }
 
 // UpdateCredential updates a connection credential
@@ -537,49 +538,6 @@ func notifyPhoneRotationSettingsUpdated(phoneID string, mode string, intervalMin
 		// Log error but don't fail - phone will get settings on next sync
 		_ = err
 	}
-}
-
-
-// getNextAvailableCredentialPort finds a random available port for a credential
-// Ports are selected randomly (not sequentially) from the credential port range
-func getNextAvailableCredentialPort(server *models.HubServer) (int, error) {
-	// Get all currently used credential ports on this server
-	var usedPorts []int
-	database.DB.Model(&models.ConnectionCredential{}).
-		Joins("JOIN phones ON connection_credentials.phone_id = phones.id").
-		Where("phones.hub_server_id = ? AND connection_credentials.port > 0", server.ID).
-		Pluck("connection_credentials.port", &usedPorts)
-
-	// Build a set of used ports for O(1) lookup
-	usedSet := make(map[int]bool, len(usedPorts))
-	for _, port := range usedPorts {
-		usedSet[port] = true
-	}
-
-	// Calculate available ports
-	totalPorts := CredentialPortEnd - CredentialPortStart
-	availableCount := totalPorts - len(usedPorts)
-
-	if availableCount <= 0 {
-		return 0, fmt.Errorf("no available ports in range %d-%d", CredentialPortStart, CredentialPortEnd)
-	}
-
-	// Try up to 100 random ports to find an available one
-	for attempts := 0; attempts < 100; attempts++ {
-		port := CredentialPortStart + rand.Intn(totalPorts)
-		if !usedSet[port] {
-			return port, nil
-		}
-	}
-
-	// Fallback: linear scan for first available (shouldn't normally reach here)
-	for port := CredentialPortStart; port < CredentialPortEnd; port++ {
-		if !usedSet[port] {
-			return port, nil
-		}
-	}
-
-	return 0, fmt.Errorf("no available ports found")
 }
 
 // startCredentialProxy starts a proxy for a single credential on its assigned port
