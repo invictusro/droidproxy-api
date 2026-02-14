@@ -403,6 +403,23 @@ func PairPhone(c *gin.Context) {
 	phone.DeviceFingerprint = fingerprintHash
 	database.DB.Save(&phone)
 
+	// Add WireGuard peer to hub server
+	if phone.HubServer != nil && phone.WireGuardPublicKey != "" && phone.WireGuardIP != "" {
+		go func() {
+			if err := infra.AddWireGuardPeerV2(
+				phone.HubServer.IP,
+				phone.HubServer.HubAPIPort,
+				phone.HubServer.HubAPIKey,
+				phone.WireGuardPublicKey,
+				phone.WireGuardIP+"/32",
+			); err != nil {
+				log.Printf("[PairPhone] Failed to add WireGuard peer for phone %s: %v", phone.ID, err)
+			} else {
+				log.Printf("[PairPhone] Added WireGuard peer for phone %s (IP: %s)", phone.ID, phone.WireGuardIP)
+			}
+		}()
+	}
+
 	// Generate Centrifugo token for this phone
 	centrifugoToken, _ := phonecomm.GeneratePhoneToken(phone.ID.String())
 
@@ -806,6 +823,23 @@ func PhoneLogin(c *gin.Context) {
 	phone.PublicKey = publicKeyPEM
 	phone.DeviceFingerprint = fingerprintHash
 	database.DB.Save(&phone)
+
+	// Add WireGuard peer to hub server
+	if phone.HubServer != nil && phone.WireGuardPublicKey != "" && phone.WireGuardIP != "" {
+		go func() {
+			if err := infra.AddWireGuardPeerV2(
+				phone.HubServer.IP,
+				phone.HubServer.HubAPIPort,
+				phone.HubServer.HubAPIKey,
+				phone.WireGuardPublicKey,
+				phone.WireGuardIP+"/32",
+			); err != nil {
+				log.Printf("[PairPhoneManual] Failed to add WireGuard peer for phone %s: %v", phone.ID, err)
+			} else {
+				log.Printf("[PairPhoneManual] Added WireGuard peer for phone %s (IP: %s)", phone.ID, phone.WireGuardIP)
+			}
+		}()
+	}
 
 	// Generate Centrifugo token for this phone
 	centrifugoToken, _ := phonecomm.GeneratePhoneToken(phone.ID.String())

@@ -633,11 +633,13 @@ func startCredentialProxy(phone *models.Phone, credential *models.ConnectionCred
 
 	// Build proxy config for this single credential
 	proxyConfig := map[string]interface{}{
-		"port":        credential.Port,
-		"target_ip":   phone.WireGuardIP,
-		"target_port": 1080, // Phone SOCKS5 server
-		"protocol":    protocol,
-		"credentials": []map[string]interface{}{credMap},
+		"phone_id":         phone.ID.String(),
+		"port":             credential.Port,
+		"target_ip":        phone.WireGuardIP,
+		"target_port":      1080, // Phone SOCKS5 server
+		"credentials":      []map[string]interface{}{credMap},
+		"speed_limit_mbps": phone.SpeedLimitMbps,
+		"max_connections":  phone.MaxConnections,
 	}
 
 	log.Printf("[startCredentialProxy] Starting %s proxy on port %d for credential %s (phone: %s)",
