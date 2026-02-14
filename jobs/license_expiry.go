@@ -55,7 +55,8 @@ func checkExpiredLicenses() {
 	cleanupOldExpiredPhones()
 }
 
-// processExpiredLicense marks a license as expired and disables credentials
+// processExpiredLicense marks a license as expired and DELETES all credentials
+// This ensures proxy stops working immediately and user starts fresh when renewing
 func processExpiredLicense(license models.PhoneLicense) {
 	log.Printf("[Jobs] Processing expired license %s for phone %s", license.ID, license.PhoneID)
 
@@ -68,7 +69,7 @@ func processExpiredLicense(license models.PhoneLicense) {
 		return
 	}
 
-	// Update phone - keep plan_tier/license_expires_at for UI display, just clear limits
+	// Update phone - keep plan_tier/license_expires_at for UI display, clear limits
 	// The UI checks license_expires_at to determine if license is expired
 	if err := tx.Model(&models.Phone{}).Where("id = ?", license.PhoneID).Updates(map[string]interface{}{
 		"speed_limit_mbps": 0,
@@ -79,13 +80,15 @@ func processExpiredLicense(license models.PhoneLicense) {
 		return
 	}
 
-	// Disable all credentials for this phone
-	if err := tx.Model(&models.ConnectionCredential{}).
-		Where("phone_id = ?", license.PhoneID).
-		Update("is_active", false).Error; err != nil {
+	// DELETE all credentials for this phone (not just disable)
+	// This ensures proxy completely stops and user must create new credentials when renewing
+	var deletedCount int64
+	if result := tx.Where("phone_id = ?", license.PhoneID).Delete(&models.ConnectionCredential{}); result.Error != nil {
 		tx.Rollback()
-		log.Printf("[Jobs] Error disabling credentials: %v", err)
+		log.Printf("[Jobs] Error deleting credentials: %v", result.Error)
 		return
+	} else {
+		deletedCount = result.RowsAffected
 	}
 
 	// Delete rotation token
@@ -95,7 +98,7 @@ func processExpiredLicense(license models.PhoneLicense) {
 	}
 
 	tx.Commit()
-	log.Printf("[Jobs] Successfully expired license for phone %s", license.PhoneID)
+	log.Printf("[Jobs] Successfully expired license for phone %s (deleted %d credentials)", license.PhoneID, deletedCount)
 
 	// Trigger hub reconciliation to remove proxies immediately
 	go triggerHubReconciliationForPhone(license.PhoneID)
