@@ -103,7 +103,8 @@ func CreatePhone(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&phone).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create phone"})
+		log.Printf("[CreatePhone] Failed to create phone: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create phone: " + err.Error()})
 		return
 	}
 
