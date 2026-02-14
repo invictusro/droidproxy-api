@@ -25,9 +25,9 @@ const (
 
 // Plan limits
 type PlanLimits struct {
-	SpeedLimitMbps int // Bandwidth limit in Mbit/sec
-	MaxConnections int // Max concurrent proxy connections
-	LogWeeks       int // Log retention in weeks
+	SpeedLimitMbps int `json:"speed_limit_mbps"` // Bandwidth limit in Mbit/sec
+	MaxConnections int `json:"max_connections"`  // Max concurrent proxy connections
+	LogWeeks       int `json:"log_weeks"`        // Log retention in weeks
 }
 
 // GetPlanLimits returns the limits for a given plan tier
