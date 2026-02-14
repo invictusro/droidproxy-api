@@ -19,7 +19,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{cfg.FrontendURL, "http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Phone-ID", "X-Phone-Token", "X-Signature", "X-Timestamp"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Phone-ID", "X-Phone-Token", "X-Signature", "X-Timestamp", "X-API-Key"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -252,6 +252,33 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.POST("/fleet/update", handlers.TriggerFleetUpdate)      // Update all servers
 			admin.POST("/fleet/update/:id", handlers.UpdateSingleServer)  // Update single server
 		}
+
+		// API Key Management (user auth required)
+		api.GET("/api-keys", handlers.ListAPIKeys)
+		api.POST("/api-keys", handlers.CreateAPIKey)
+		api.PUT("/api-keys/:id", handlers.UpdateAPIKey)
+		api.DELETE("/api-keys/:id", handlers.DeleteAPIKey)
+	}
+
+	// Reseller API (API Key auth required via X-API-Key header)
+	// Only Nitro plan phones are accessible through this API
+	reseller := r.Group("/reseller")
+	reseller.Use(middleware.APIKeyAuth())
+	{
+		// Phones (read-only, Nitro plan only)
+		reseller.GET("/phones", handlers.ListResellerPhones)
+		reseller.GET("/phones/:id", handlers.GetResellerPhone)
+
+		// Credentials
+		reseller.GET("/phones/:id/credentials", handlers.ListResellerCredentials)
+		reseller.GET("/phones/:id/credentials/:credId", handlers.GetResellerCredential)
+		reseller.POST("/phones/:id/credentials", handlers.CreateResellerCredential)
+		reseller.DELETE("/phones/:id/credentials/:credId", handlers.DeleteResellerCredential)
+
+		// Rotation
+		reseller.GET("/phones/:id/rotation", handlers.GetResellerRotation)
+		reseller.PUT("/phones/:id/rotation", handlers.SetResellerRotation)
+		reseller.POST("/phones/:id/rotate-ip", handlers.ResellerRotateIP)
 	}
 
 	return r

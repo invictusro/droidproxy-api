@@ -51,6 +51,7 @@ func Migrate() error {
 		&models.PhoneLicense{},
 		&models.BalanceTransaction{},
 		&models.SystemSetting{},
+		&models.APIKey{},
 	)
 	if err != nil {
 		return err
