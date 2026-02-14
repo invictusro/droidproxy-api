@@ -459,7 +459,7 @@ func SetResellerRotation(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "interval_minutes must be between 2 and 120"})
 			return
 		}
-		updates["rotation_interval"] = req.IntervalMinutes
+		updates["rotation_interval_minutes"] = req.IntervalMinutes
 	}
 
 	if err := database.DB.Model(&phone).Updates(updates).Error; err != nil {
