@@ -8,6 +8,7 @@ import (
 	"github.com/droidproxy/api/handlers"
 	"github.com/droidproxy/api/internal/dns"
 	"github.com/droidproxy/api/internal/phone"
+	"github.com/droidproxy/api/jobs"
 	"github.com/droidproxy/api/routes"
 )
 
@@ -55,6 +56,9 @@ func main() {
 	} else {
 		log.Println("DNS manager not configured (RAGE4_API_KEY or RAGE4_DOMAIN_ID missing)")
 	}
+
+	// Start background jobs
+	jobs.StartLicenseExpiryJob()
 
 	// Setup routes
 	router := routes.Setup(cfg)

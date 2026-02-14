@@ -11,6 +11,33 @@ import (
 	"github.com/google/uuid"
 )
 
+// Helper to get plans list
+func getPlansResponse() []gin.H {
+	return []gin.H{
+		{
+			"tier":            "lite",
+			"name":            "Lite",
+			"price_cents":     models.PriceLite,
+			"price_formatted": "$5.00/month",
+			"limits":          models.GetPlanLimits(models.PlanLite),
+		},
+		{
+			"tier":            "turbo",
+			"name":            "Turbo",
+			"price_cents":     models.PriceTurbo,
+			"price_formatted": "$7.00/month",
+			"limits":          models.GetPlanLimits(models.PlanTurbo),
+		},
+		{
+			"tier":            "nitro",
+			"name":            "Nitro",
+			"price_cents":     models.PriceNitro,
+			"price_formatted": "$9.00/month",
+			"limits":          models.GetPlanLimits(models.PlanNitro),
+		},
+	}
+}
+
 // GetPhoneLicense returns the current license for a phone
 func GetPhoneLicense(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
@@ -27,45 +54,39 @@ func GetPhoneLicense(c *gin.Context) {
 		return
 	}
 
-	// Find active license
+	// Find active license first
 	var license models.PhoneLicense
 	if err := database.DB.Where("phone_id = ? AND status = ?", phoneID, models.LicenseActive).
 		Order("expires_at DESC").
-		First(&license).Error; err != nil {
-		// No active license
+		First(&license).Error; err == nil {
+		// Active license found
 		c.JSON(http.StatusOK, gin.H{
-			"has_license": false,
-			"license":     nil,
-			"plans": []gin.H{
-				{
-					"tier":            "lite",
-					"name":            "Lite",
-					"price_cents":     models.PriceLite,
-					"price_formatted": "$5.00/month",
-					"limits":          models.GetPlanLimits(models.PlanLite),
-				},
-				{
-					"tier":            "turbo",
-					"name":            "Turbo",
-					"price_cents":     models.PriceTurbo,
-					"price_formatted": "$7.00/month",
-					"limits":          models.GetPlanLimits(models.PlanTurbo),
-				},
-				{
-					"tier":            "nitro",
-					"name":            "Nitro",
-					"price_cents":     models.PriceNitro,
-					"price_formatted": "$9.00/month",
-					"limits":          models.GetPlanLimits(models.PlanNitro),
-				},
-			},
+			"has_license": true,
+			"license":     license.ToResponse(),
+			"plans":       getPlansResponse(),
 		})
 		return
 	}
 
+	// Check for expired license (for "Extend" functionality)
+	var expiredLicense models.PhoneLicense
+	if err := database.DB.Where("phone_id = ? AND status = ?", phoneID, models.LicenseExpired).
+		Order("expires_at DESC").
+		First(&expiredLicense).Error; err == nil {
+		// Expired license found - allow extending
+		c.JSON(http.StatusOK, gin.H{
+			"has_license": false,
+			"license":     expiredLicense.ToResponse(),
+			"plans":       getPlansResponse(),
+		})
+		return
+	}
+
+	// No license at all
 	c.JSON(http.StatusOK, gin.H{
-		"has_license": true,
-		"license":     license.ToResponse(),
+		"has_license": false,
+		"license":     nil,
+		"plans":       getPlansResponse(),
 	})
 }
 
