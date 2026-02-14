@@ -203,6 +203,43 @@ func SetupPhoneDNS(c *gin.Context) {
 	})
 }
 
+// UpdatePhone updates phone properties (name)
+func UpdatePhone(c *gin.Context) {
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	userID := middleware.GetCurrentUserID(c)
+
+	var phone models.Phone
+	if err := database.DB.Preload("HubServer").Where("id = ? AND user_id = ?", phoneID, userID).First(&phone).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if req.Name != "" {
+		phone.Name = req.Name
+		if err := database.DB.Save(&phone).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update phone"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"phone": phone.ToResponse(),
+	})
+}
+
 // DeletePhone removes a phone
 func DeletePhone(c *gin.Context) {
 	phoneID, err := uuid.Parse(c.Param("id"))
