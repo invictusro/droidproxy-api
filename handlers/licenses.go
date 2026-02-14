@@ -280,6 +280,63 @@ func UpdatePhoneLicense(c *gin.Context) {
 	})
 }
 
+// CancelLicense cancels an active license
+func CancelLicense(c *gin.Context) {
+	user := middleware.GetCurrentUser(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	// Verify phone ownership
+	var phone models.Phone
+	if err := database.DB.First(&phone, "id = ? AND user_id = ?", phoneID, user.ID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	// Find active license
+	var license models.PhoneLicense
+	if err := database.DB.Where("phone_id = ? AND status = ?", phoneID, models.LicenseActive).
+		First(&license).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No active license found"})
+		return
+	}
+
+	tx := database.DB.Begin()
+
+	// Update license status to cancelled
+	if err := tx.Model(&license).Updates(map[string]interface{}{
+		"status":     models.LicenseCancelled,
+		"updated_at": time.Now(),
+	}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel license"})
+		return
+	}
+
+	// Clear phone plan fields
+	if err := tx.Model(&phone).Updates(map[string]interface{}{
+		"plan_tier":           nil,
+		"license_expires_at":  nil,
+		"license_auto_extend": false,
+		"speed_limit_mbps":    0,
+		"max_connections":     0,
+		"log_retention_weeks": 0,
+	}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update phone"})
+		return
+	}
+
+	tx.Commit()
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "License cancelled successfully",
+	})
+}
+
 // GetAvailablePlans returns all available plan tiers
 func GetAvailablePlans(c *gin.Context) {
 	plans := []gin.H{

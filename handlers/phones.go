@@ -245,6 +245,7 @@ func DeletePhone(c *gin.Context) {
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneUptimeLog{})
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneDailyUptime{})
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneGroupMembership{})
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneLicense{})
 
 	// Delete the phone
 	if err := database.DB.Delete(&phone).Error; err != nil {
