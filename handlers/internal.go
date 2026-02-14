@@ -31,11 +31,13 @@ type SyncCredential struct {
 }
 
 type SyncProxy struct {
-	PhoneID     string           `json:"phone_id"`
-	Port        int              `json:"port"`
-	TargetIP    string           `json:"target_ip"`
-	TargetPort  int              `json:"target_port"`
-	Credentials []SyncCredential `json:"credentials"`
+	PhoneID        string           `json:"phone_id"`
+	Port           int              `json:"port"`
+	TargetIP       string           `json:"target_ip"`
+	TargetPort     int              `json:"target_port"`
+	Credentials    []SyncCredential `json:"credentials"`
+	SpeedLimitMbps int              `json:"speed_limit_mbps"` // Plan speed limit in Mbps (0 = unlimited)
+	MaxConnections int              `json:"max_connections"`  // Plan max unique IPs (0 = unlimited)
 }
 
 type SyncState struct {
@@ -124,11 +126,13 @@ func GetHubSyncState(c *gin.Context) {
 				}
 
 				proxy := SyncProxy{
-					PhoneID:     phone.ID.String(),
-					Port:        cred.Port,
-					TargetIP:    phone.WireGuardIP,
-					TargetPort:  1080, // SOCKS5 port on phone
-					Credentials: []SyncCredential{syncCred},
+					PhoneID:        phone.ID.String(),
+					Port:           cred.Port,
+					TargetIP:       phone.WireGuardIP,
+					TargetPort:     1080, // SOCKS5 port on phone
+					Credentials:    []SyncCredential{syncCred},
+					SpeedLimitMbps: phone.SpeedLimitMbps,  // From plan
+					MaxConnections: phone.MaxConnections,  // From plan
 				}
 
 				state.Proxies = append(state.Proxies, proxy)

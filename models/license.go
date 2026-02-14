@@ -25,8 +25,8 @@ const (
 
 // Plan limits
 type PlanLimits struct {
-	SpeedLimitMbps int `json:"speed_limit_mbps"` // Bandwidth limit in Mbit/sec
-	MaxConnections int `json:"max_connections"`  // Max concurrent proxy connections
+	SpeedLimitMbps int `json:"speed_limit_mbps"` // Speed limit in Mbps (Megabits per second) - matches fast.com
+	MaxConnections int `json:"max_connections"`  // Max unique client IPs (concurrent connections)
 	LogWeeks       int `json:"log_weeks"`        // Log retention in weeks
 }
 
@@ -36,9 +36,9 @@ func GetPlanLimits(tier PlanTier) PlanLimits {
 	case PlanLite:
 		return PlanLimits{SpeedLimitMbps: 5, MaxConnections: 4, LogWeeks: 2}
 	case PlanTurbo:
-		return PlanLimits{SpeedLimitMbps: 25, MaxConnections: 7, LogWeeks: 4}
+		return PlanLimits{SpeedLimitMbps: 30, MaxConnections: 7, LogWeeks: 4}
 	case PlanNitro:
-		return PlanLimits{SpeedLimitMbps: 100, MaxConnections: 20, LogWeeks: 12}
+		return PlanLimits{SpeedLimitMbps: 110, MaxConnections: 20, LogWeeks: 12}
 	default:
 		return PlanLimits{SpeedLimitMbps: 0, MaxConnections: 0, LogWeeks: 0}
 	}

@@ -44,7 +44,7 @@ type Phone struct {
 	PlanTier          string     `gorm:"type:varchar(20)" json:"plan_tier"`          // lite, turbo, nitro (empty = no plan)
 	LicenseExpiresAt  *time.Time `json:"license_expires_at"`                         // When license expires
 	LicenseAutoExtend bool       `gorm:"default:false" json:"license_auto_extend"`   // Auto-renew from balance
-	SpeedLimitMbps    int        `gorm:"default:0" json:"speed_limit_mbps"`          // Bandwidth limit (from plan)
+	SpeedLimitMbps    int        `gorm:"default:0" json:"speed_limit_mbps"`          // Speed limit in Mbps (from plan)
 	MaxConnections    int        `gorm:"default:0" json:"max_connections"`           // Max concurrent connections (from plan)
 
 	// Domain blocking (phone level)

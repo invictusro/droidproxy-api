@@ -42,6 +42,11 @@ type HubServer struct {
 	CurrentVersion string     `gorm:"type:varchar(20);default:'unknown'" json:"-"` // Hub agent version
 	LastHeartbeat  *time.Time `json:"-"`
 
+	// Server specs (set once when adding server)
+	VCPUs              int `gorm:"column:v_cpus" json:"-"`              // Number of vCPUs
+	CPUBenchmarkSingle int `gorm:"column:cpu_benchmark_single" json:"-"` // sysbench events/sec single core
+	CPUBenchmarkAll    int `gorm:"column:cpu_benchmark_all" json:"-"`    // sysbench events/sec all cores
+
 	// DNS routing fields (for dynamic proxy routing)
 	DNSSubdomain string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
 	DNSDomain    string `json:"dns_domain"`    // Full server domain (e.g., "x1.yalx.in")
@@ -97,6 +102,10 @@ type HubServerAdminResponse struct {
 	CurrentVersion string     `json:"current_version,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	PhoneCount     int        `json:"phone_count"`
+	// Server specs
+	VCPUs              int `json:"vcpus,omitempty"`
+	CPUBenchmarkSingle int `json:"cpu_benchmark_single,omitempty"` // events/sec single core
+	CPUBenchmarkAll    int `json:"cpu_benchmark_all,omitempty"`    // events/sec all cores
 }
 
 func (s *HubServer) ToResponse() HubServerResponse {
@@ -111,29 +120,32 @@ func (s *HubServer) ToResponse() HubServerResponse {
 
 func (s *HubServer) ToAdminResponse() HubServerAdminResponse {
 	return HubServerAdminResponse{
-		ID:             s.ID,
-		Name:           s.Name,
-		Location:       s.Location,
-		IP:             s.IP,
-		WireGuardPort:  s.WireGuardPort,
-		ProxyPortStart: s.ProxyPortStart,
-		ProxyPortEnd:   s.ProxyPortEnd,
-		HubAPIPort:     s.HubAPIPort,
-		HasHubAPIKey:   s.HubAPIKey != "",
-		SSHPort:        s.SSHPort,
-		SSHUser:        s.SSHUser,
-		HasSSHPassword: s.SSHPassword != "",
-		IsSetup:        s.IsSetup,
-		IsActive:       s.IsActive,
-		DNSSubdomain:   s.DNSSubdomain,
-		DNSDomain:      s.DNSDomain,
-		LastCheckAt:    s.LastCheckAt,
-		LastHeartbeat:  s.LastHeartbeat,
-		CPUPercent:     s.CPUPercent,
-		MemoryPercent:  s.MemoryPercent,
-		CurrentVersion: s.CurrentVersion,
-		CreatedAt:      s.CreatedAt,
-		PhoneCount:     len(s.Phones),
+		ID:                 s.ID,
+		Name:               s.Name,
+		Location:           s.Location,
+		IP:                 s.IP,
+		WireGuardPort:      s.WireGuardPort,
+		ProxyPortStart:     s.ProxyPortStart,
+		ProxyPortEnd:       s.ProxyPortEnd,
+		HubAPIPort:         s.HubAPIPort,
+		HasHubAPIKey:       s.HubAPIKey != "",
+		SSHPort:            s.SSHPort,
+		SSHUser:            s.SSHUser,
+		HasSSHPassword:     s.SSHPassword != "",
+		IsSetup:            s.IsSetup,
+		IsActive:           s.IsActive,
+		DNSSubdomain:       s.DNSSubdomain,
+		DNSDomain:          s.DNSDomain,
+		LastCheckAt:        s.LastCheckAt,
+		LastHeartbeat:      s.LastHeartbeat,
+		CPUPercent:         s.CPUPercent,
+		MemoryPercent:      s.MemoryPercent,
+		CurrentVersion:     s.CurrentVersion,
+		CreatedAt:          s.CreatedAt,
+		PhoneCount:         len(s.Phones),
+		VCPUs:              s.VCPUs,
+		CPUBenchmarkSingle: s.CPUBenchmarkSingle,
+		CPUBenchmarkAll:    s.CPUBenchmarkAll,
 	}
 }
 

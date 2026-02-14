@@ -35,6 +35,10 @@ type CreateHubServerRequest struct {
 	SSHUser        string `json:"ssh_user"`
 	SSHPassword    string `json:"ssh_password"`
 	DNSSubdomain   string `json:"dns_subdomain"` // Server subdomain (e.g., "x1" for x1.yalx.in)
+	// Server specs (set once)
+	VCPUs              int `json:"vcpus"`
+	CPUBenchmarkSingle int `json:"cpu_benchmark_single"` // sysbench events/sec single core
+	CPUBenchmarkAll    int `json:"cpu_benchmark_all"`    // sysbench events/sec all cores
 }
 
 // UpdateHubServerRequest is the request body for updating a hub server
@@ -119,19 +123,22 @@ func CreateServer(c *gin.Context) {
 	}
 
 	server := models.HubServer{
-		Name:           req.Name,
-		Location:       req.Location,
-		IP:             req.IP,
-		WireGuardPort:  req.WireGuardPort,
-		ProxyPortStart: req.ProxyPortStart,
-		ProxyPortEnd:   req.ProxyPortEnd,
-		HubAPIKey:      req.HubAPIKey,
-		HubAPIPort:     req.HubAPIPort,
-		SSHPort:        req.SSHPort,
-		SSHUser:        req.SSHUser,
-		SSHPassword:    req.SSHPassword,
-		DNSSubdomain:   req.DNSSubdomain,
-		IsActive:       true,
+		Name:               req.Name,
+		Location:           req.Location,
+		IP:                 req.IP,
+		WireGuardPort:      req.WireGuardPort,
+		ProxyPortStart:     req.ProxyPortStart,
+		ProxyPortEnd:       req.ProxyPortEnd,
+		HubAPIKey:          req.HubAPIKey,
+		HubAPIPort:         req.HubAPIPort,
+		SSHPort:            req.SSHPort,
+		SSHUser:            req.SSHUser,
+		SSHPassword:        req.SSHPassword,
+		DNSSubdomain:       req.DNSSubdomain,
+		IsActive:           true,
+		VCPUs:              req.VCPUs,
+		CPUBenchmarkSingle: req.CPUBenchmarkSingle,
+		CPUBenchmarkAll:    req.CPUBenchmarkAll,
 	}
 
 	// Set defaults
