@@ -21,6 +21,7 @@ type TransactionReason string
 const (
 	ReasonLicensePurchase TransactionReason = "license_purchase"
 	ReasonLicenseRenewal  TransactionReason = "license_renewal"
+	ReasonLicenseUpgrade  TransactionReason = "license_upgrade"
 	ReasonAdminCredit     TransactionReason = "admin_credit"
 	ReasonAdminDebit      TransactionReason = "admin_debit"
 	ReasonRefund          TransactionReason = "refund"

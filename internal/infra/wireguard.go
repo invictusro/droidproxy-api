@@ -2,6 +2,8 @@ package infra
 
 import (
 	"fmt"
+
+	"github.com/droidproxy/api/models"
 )
 
 // WireGuardManager manages WireGuard configuration on servers
@@ -13,15 +15,15 @@ type WireGuardManager struct {
 type WireGuardServerConfig struct {
 	PrivateKey string
 	PublicKey  string
-	Address    string // e.g., "10.66.66.1/24"
+	Address    string // Always "10.66.0.1/16" - same for all hub servers
 	ListenPort int
 }
 
 // WireGuardPeerConfig holds peer (phone) configuration
 type WireGuardPeerConfig struct {
 	PublicKey  string
-	AllowedIPs string // e.g., "10.66.66.2/32"
-	IP         string // e.g., "10.66.66.2"
+	AllowedIPs string // e.g., "10.66.0.2/32"
+	IP         string // e.g., "10.66.0.2"
 }
 
 // NewWireGuardManager creates a new WireGuard manager
@@ -30,7 +32,8 @@ func NewWireGuardManager(client *SSHClient) *WireGuardManager {
 }
 
 // InitializeServer sets up WireGuard server configuration
-func (w *WireGuardManager) InitializeServer(listenPort int, networkPrefix string) (*WireGuardServerConfig, error) {
+// All servers use the same WireGuard address (10.66.0.1/16) to be on the same subnet as phones
+func (w *WireGuardManager) InitializeServer(listenPort int) (*WireGuardServerConfig, error) {
 	// Generate server keys
 	result, err := w.client.Run("wg genkey")
 	if err != nil {
@@ -45,13 +48,14 @@ func (w *WireGuardManager) InitializeServer(listenPort int, networkPrefix string
 	publicKey := result.Stdout
 
 	// Create WireGuard config with /16 subnet for 65k+ phones
+	// IMPORTANT: All hub servers MUST use 10.66.0.1/16 to be on the same subnet as phones
 	config := fmt.Sprintf(`[Interface]
 PrivateKey = %s
-Address = %s.0.1/16
+Address = %s
 ListenPort = %d
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
-`, privateKey, networkPrefix, listenPort)
+`, privateKey, models.WireGuardServerIP, listenPort)
 
 	// Write config
 	_, err = w.client.Run(fmt.Sprintf("echo '%s' > /etc/wireguard/wg0.conf", config))
@@ -72,7 +76,7 @@ PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING 
 	return &WireGuardServerConfig{
 		PrivateKey: privateKey,
 		PublicKey:  publicKey,
-		Address:    fmt.Sprintf("%s.0.1/16", networkPrefix),
+		Address:    models.WireGuardServerIP,
 		ListenPort: listenPort,
 	}, nil
 }

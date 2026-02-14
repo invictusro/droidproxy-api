@@ -116,6 +116,13 @@ func UpdateProxyCredentialsV2(ip string, hubAPIPort int, apiKey string, proxyPor
 	return doHubAgentRequest("PUT", url, apiKey, body)
 }
 
+// TriggerReconcileV2 triggers a full state reconciliation on a hub
+// This causes the hub to fetch state from main API and apply it (including speed limits)
+func TriggerReconcileV2(ip string, hubAPIPort int, apiKey string) error {
+	url := fmt.Sprintf("http://%s:%d/v2/reconcile", ip, hubAPIPort)
+	return doHubAgentRequest("POST", url, apiKey, nil)
+}
+
 // doHubAgentRequest performs a request to the hub-agent API
 func doHubAgentRequest(method, url, apiKey string, body interface{}) error {
 	client := &http.Client{

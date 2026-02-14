@@ -151,6 +151,8 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.POST("/phones/:id/license", handlers.PurchaseLicense)
 		api.PUT("/phones/:id/license", handlers.UpdatePhoneLicense)
 		api.DELETE("/phones/:id/license", handlers.CancelLicense)
+		api.GET("/phones/:id/license/change-preview", handlers.PreviewPlanChange)
+		api.PUT("/phones/:id/license/change", handlers.ChangePlan)
 
 		// Phone Domain Blocking
 		api.GET("/phones/:id/blocked-domains", handlers.GetPhoneBlockedDomains)
