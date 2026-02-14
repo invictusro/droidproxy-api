@@ -485,6 +485,15 @@ func CentrifugoPublishProxy(c *gin.Context) {
 			BytesOut          int64  `json:"bytes_out"` // Bytes sent since last update
 			SimCountry        string `json:"sim_country"`
 			SimCarrier        string `json:"sim_carrier"`
+			// Device metrics
+			BatteryLevel    int    `json:"battery_level"`
+			BatteryHealth   string `json:"battery_health"`
+			BatteryCharging bool   `json:"battery_charging"`
+			BatteryTemp     int    `json:"battery_temp"`
+			RAMUsedMB       int64  `json:"ram_used_mb"`
+			RAMTotalMB      int64  `json:"ram_total_mb"`
+			DeviceModel     string `json:"device_model"`
+			OSVersion       string `json:"os_version"`
 		} `json:"data"`
 	}
 
@@ -515,15 +524,31 @@ func CentrifugoPublishProxy(c *gin.Context) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
-	// Update SIM info if provided
-	if req.Data.SimCountry != "" || req.Data.SimCarrier != "" {
-		updates := map[string]interface{}{}
-		if req.Data.SimCountry != "" {
-			updates["sim_country"] = req.Data.SimCountry
-		}
-		if req.Data.SimCarrier != "" {
-			updates["sim_carrier"] = req.Data.SimCarrier
-		}
+	// Update SIM info and device metrics if provided
+	updates := map[string]interface{}{}
+	if req.Data.SimCountry != "" {
+		updates["sim_country"] = req.Data.SimCountry
+	}
+	if req.Data.SimCarrier != "" {
+		updates["sim_carrier"] = req.Data.SimCarrier
+	}
+	// Device metrics
+	if req.Data.BatteryLevel >= 0 {
+		updates["battery_level"] = req.Data.BatteryLevel
+		updates["battery_health"] = req.Data.BatteryHealth
+		updates["battery_charging"] = req.Data.BatteryCharging
+		updates["battery_temp"] = req.Data.BatteryTemp
+	}
+	if req.Data.RAMTotalMB > 0 {
+		updates["ram_used_mb"] = req.Data.RAMUsedMB
+		updates["ram_total_mb"] = req.Data.RAMTotalMB
+	}
+	if req.Data.DeviceModel != "" {
+		updates["device_model"] = req.Data.DeviceModel
+		updates["os_version"] = req.Data.OSVersion
+	}
+	if len(updates) > 0 {
+		updates["metrics_updated_at"] = now
 		database.DB.Model(&models.Phone{}).Where("id = ?", phoneID).Updates(updates)
 	}
 
@@ -925,6 +950,61 @@ func GetDomainBlocklist(c *gin.Context) {
 	c.JSON(http.StatusOK, models.BlocklistPatternResponse{
 		Patterns:  patterns,
 		UpdatedAt: lastUpdated,
+	})
+}
+
+// GetPhoneBlockedDomains returns the blocked domain patterns for a phone
+func GetPhoneBlockedDomains(c *gin.Context) {
+	user := middleware.GetCurrentUser(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var phone models.Phone
+	if err := database.DB.First(&phone, "id = ? AND user_id = ?", phoneID, user.ID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"blocked_domains": phone.BlockedDomains,
+	})
+}
+
+// UpdatePhoneBlockedDomains updates the blocked domain patterns for a phone
+func UpdatePhoneBlockedDomains(c *gin.Context) {
+	user := middleware.GetCurrentUser(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var req struct {
+		BlockedDomains []string `json:"blocked_domains"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var phone models.Phone
+	if err := database.DB.First(&phone, "id = ? AND user_id = ?", phoneID, user.ID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	// Update blocked domains
+	if err := database.DB.Model(&phone).Update("blocked_domains", req.BlockedDomains).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update blocked domains"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "Blocked domains updated",
+		"blocked_domains": req.BlockedDomains,
 	})
 }
 

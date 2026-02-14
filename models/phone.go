@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -36,12 +37,33 @@ type Phone struct {
 	RotationMode            string `gorm:"default:'off'" json:"rotation_mode"`     // 'off', 'timed', 'api'
 	RotationIntervalMinutes int    `gorm:"default:0" json:"rotation_interval_minutes"` // 2-120 minutes (when mode is 'timed')
 
-	// Log retention settings
-	LogRetentionWeeks int `gorm:"default:12" json:"log_retention_weeks"` // Access log retention (1-12 weeks, default 12)
+	// Log retention settings (derived from plan)
+	LogRetentionWeeks int `gorm:"default:12" json:"log_retention_weeks"` // Access log retention (1-12 weeks)
+
+	// Plan/License fields
+	PlanTier          string     `gorm:"type:varchar(20)" json:"plan_tier"`          // lite, turbo, nitro (empty = no plan)
+	LicenseExpiresAt  *time.Time `json:"license_expires_at"`                         // When license expires
+	LicenseAutoExtend bool       `gorm:"default:false" json:"license_auto_extend"`   // Auto-renew from balance
+	SpeedLimitMbps    int        `gorm:"default:0" json:"speed_limit_mbps"`          // Bandwidth limit (from plan)
+	MaxConnections    int        `gorm:"default:0" json:"max_connections"`           // Max concurrent connections (from plan)
+
+	// Domain blocking (phone level)
+	BlockedDomains pq.StringArray `gorm:"type:text[]" json:"blocked_domains"` // Domain patterns to block
 
 	// SIM card info (updated via status updates)
 	SimCountry string `json:"sim_country"` // ISO country code (e.g., "US", "GB")
 	SimCarrier string `json:"sim_carrier"` // Carrier name
+
+	// Device metrics (from APK heartbeat/status)
+	BatteryLevel     int        `json:"battery_level"`      // 0-100%
+	BatteryHealth    string     `json:"battery_health"`     // good, overheat, cold, dead, unknown
+	BatteryCharging  bool       `json:"battery_charging"`   // Currently charging
+	BatteryTemp      int        `json:"battery_temp"`       // Temperature in celsius
+	RAMUsedMB        int64      `json:"ram_used_mb"`        // Used RAM in MB
+	RAMTotalMB       int64      `json:"ram_total_mb"`       // Total RAM in MB
+	DeviceModel      string     `json:"device_model"`       // Device model (e.g., "Google Pixel 6a")
+	OSVersion        string     `json:"os_version"`         // OS version (e.g., "Android 14")
+	MetricsUpdatedAt *time.Time `json:"metrics_updated_at"` // Last metrics update
 
 	// Relationships
 	User      User       `gorm:"foreignKey:UserID" json:"-"`
@@ -88,15 +110,38 @@ type PhoneResponse struct {
 	ID                      uuid.UUID         `json:"id"`
 	Name                    string            `json:"name"`
 	PairedAt                *time.Time        `json:"paired_at,omitempty"`
-	HubServerIP             string            `json:"hub_server_ip,omitempty"` // Hub server IP for proxy connection
-	ProxyDomain             string            `json:"proxy_domain,omitempty"` // Full proxy domain (e.g., "abc123def.cn.yalx.in")
+	HubServerIP             string            `json:"hub_server_ip,omitempty"`  // Hub server IP for proxy connection
+	ProxyDomain             string            `json:"proxy_domain,omitempty"`   // Full proxy domain (e.g., "abc123def.cn.yalx.in")
 	HubServer               HubServerResponse `json:"hub_server,omitempty"`
-	RotationMode            string            `json:"rotation_mode"`              // 'off', 'timed', 'api'
-	RotationIntervalMinutes int               `json:"rotation_interval_minutes"`  // 2-120 minutes
-	LogRetentionWeeks       int               `json:"log_retention_weeks"`        // 1-12 weeks
+	RotationMode            string            `json:"rotation_mode"`            // 'off', 'timed', 'api'
+	RotationIntervalMinutes int               `json:"rotation_interval_minutes"` // 2-120 minutes
+	LogRetentionWeeks       int               `json:"log_retention_weeks"`       // 1-12 weeks
 	SimCountry              string            `json:"sim_country"`
 	SimCarrier              string            `json:"sim_carrier"`
-	CreatedAt               time.Time         `json:"created_at"`
+
+	// Plan/License fields
+	PlanTier          string     `json:"plan_tier"`           // lite, turbo, nitro (empty = no plan)
+	LicenseExpiresAt  *time.Time `json:"license_expires_at"`  // When license expires
+	LicenseAutoExtend bool       `json:"license_auto_extend"` // Auto-renew from balance
+	SpeedLimitMbps    int        `json:"speed_limit_mbps"`    // Bandwidth limit
+	MaxConnections    int        `json:"max_connections"`     // Max concurrent connections
+	HasActiveLicense  bool       `json:"has_active_license"`  // Computed: has valid non-expired license
+
+	// Domain blocking
+	BlockedDomains []string `json:"blocked_domains"`
+
+	// Device metrics
+	BatteryLevel     int        `json:"battery_level"`
+	BatteryHealth    string     `json:"battery_health"`
+	BatteryCharging  bool       `json:"battery_charging"`
+	BatteryTemp      int        `json:"battery_temp"`
+	RAMUsedMB        int64      `json:"ram_used_mb"`
+	RAMTotalMB       int64      `json:"ram_total_mb"`
+	DeviceModel      string     `json:"device_model"`
+	OSVersion        string     `json:"os_version"`
+	MetricsUpdatedAt *time.Time `json:"metrics_updated_at"`
+
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // RotationSettingsRequest for updating rotation settings
@@ -125,6 +170,10 @@ func (p *Phone) ToResponse() PhoneResponse {
 	if retention <= 0 {
 		retention = 12
 	}
+
+	// Compute active license status
+	hasActiveLicense := p.PlanTier != "" && p.LicenseExpiresAt != nil && time.Now().Before(*p.LicenseExpiresAt)
+
 	resp := PhoneResponse{
 		ID:                      p.ID,
 		Name:                    p.Name,
@@ -135,7 +184,30 @@ func (p *Phone) ToResponse() PhoneResponse {
 		LogRetentionWeeks:       retention,
 		SimCountry:              p.SimCountry,
 		SimCarrier:              p.SimCarrier,
-		CreatedAt:               p.CreatedAt,
+
+		// Plan/License
+		PlanTier:          p.PlanTier,
+		LicenseExpiresAt:  p.LicenseExpiresAt,
+		LicenseAutoExtend: p.LicenseAutoExtend,
+		SpeedLimitMbps:    p.SpeedLimitMbps,
+		MaxConnections:    p.MaxConnections,
+		HasActiveLicense:  hasActiveLicense,
+
+		// Domain blocking
+		BlockedDomains: p.BlockedDomains,
+
+		// Device metrics
+		BatteryLevel:     p.BatteryLevel,
+		BatteryHealth:    p.BatteryHealth,
+		BatteryCharging:  p.BatteryCharging,
+		BatteryTemp:      p.BatteryTemp,
+		RAMUsedMB:        p.RAMUsedMB,
+		RAMTotalMB:       p.RAMTotalMB,
+		DeviceModel:      p.DeviceModel,
+		OSVersion:        p.OSVersion,
+		MetricsUpdatedAt: p.MetricsUpdatedAt,
+
+		CreatedAt: p.CreatedAt,
 	}
 	if p.HubServer != nil {
 		resp.HubServer = p.HubServer.ToResponse()

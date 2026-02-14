@@ -48,6 +48,8 @@ func Migrate() error {
 		&models.PhoneDailyUptime{},
 		&models.DomainBlocklist{},
 		&models.AccessLog{},
+		&models.PhoneLicense{},
+		&models.BalanceTransaction{},
 	)
 	if err != nil {
 		return err

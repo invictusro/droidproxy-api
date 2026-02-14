@@ -34,6 +34,10 @@ type User struct {
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 
+	// Balance (in cents)
+	Balance          int64      `gorm:"default:0" json:"balance"`
+	BalanceUpdatedAt *time.Time `json:"balance_updated_at"`
+
 	// Relationships
 	Phones []Phone `gorm:"foreignKey:UserID" json:"phones,omitempty"`
 }
@@ -72,6 +76,7 @@ type UserResponse struct {
 	Name      string    `json:"name"`
 	Picture   string    `json:"picture"`
 	Role      UserRole  `json:"role"`
+	Balance   int64     `json:"balance"` // Balance in cents
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -82,6 +87,7 @@ func (u *User) ToResponse() UserResponse {
 		Name:      u.Name,
 		Picture:   u.Picture,
 		Role:      u.Role,
+		Balance:   u.Balance,
 		CreatedAt: u.CreatedAt,
 	}
 }

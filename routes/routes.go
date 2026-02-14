@@ -118,6 +118,13 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.POST("/auth/refresh", handlers.RefreshToken)
 		api.POST("/auth/logout", handlers.Logout)
 
+		// Balance
+		api.GET("/me/balance", handlers.GetBalance)
+		api.GET("/me/balance/transactions", handlers.GetBalanceTransactions)
+
+		// Plans (public list)
+		api.GET("/plans", handlers.GetAvailablePlans)
+
 		// Phones
 		api.GET("/phones", handlers.ListPhones)
 		api.POST("/phones", handlers.CreatePhone)
@@ -137,6 +144,15 @@ func Setup(cfg *config.Config) *gin.Engine {
 		// Rotation Token
 		api.GET("/phones/:id/rotation-token", handlers.GetRotationToken)
 		api.POST("/phones/:id/rotation-token/regenerate", handlers.RegenerateRotationToken)
+
+		// Phone License
+		api.GET("/phones/:id/license", handlers.GetPhoneLicense)
+		api.POST("/phones/:id/license", handlers.PurchaseLicense)
+		api.PUT("/phones/:id/license", handlers.UpdatePhoneLicense)
+
+		// Phone Domain Blocking
+		api.GET("/phones/:id/blocked-domains", handlers.GetPhoneBlockedDomains)
+		api.PUT("/phones/:id/blocked-domains", handlers.UpdatePhoneBlockedDomains)
 
 		// Rotation Settings
 		api.GET("/phones/:id/rotation-settings", handlers.GetRotationSettings)
@@ -208,6 +224,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 			admin.GET("/users/:id", handlers.GetUser)
 			admin.PUT("/users/:id/role", handlers.UpdateUserRole)
 			admin.DELETE("/users/:id", handlers.DeleteUser)
+			admin.POST("/users/:id/balance", handlers.AdminAdjustBalance)
 
 			// Maintenance
 			admin.POST("/cleanup/usage", handlers.CleanupOldUsageData)
