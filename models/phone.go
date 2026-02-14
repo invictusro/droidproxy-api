@@ -65,6 +65,9 @@ type Phone struct {
 	OSVersion        string     `json:"os_version"`         // OS version (e.g., "Android 14")
 	MetricsUpdatedAt *time.Time `json:"metrics_updated_at"` // Last metrics update
 
+	// Real-time connection stats (from hub-api usage reports)
+	ActiveConnections int `gorm:"default:0" json:"active_connections"` // Current unique IPs connected to proxy
+
 	// Relationships
 	User      User       `gorm:"foreignKey:UserID" json:"-"`
 	HubServer *HubServer `gorm:"foreignKey:HubServerID" json:"hub_server,omitempty"`
@@ -125,6 +128,7 @@ type PhoneResponse struct {
 	LicenseAutoExtend bool       `json:"license_auto_extend"` // Auto-renew from balance
 	SpeedLimitMbps    int        `json:"speed_limit_mbps"`    // Bandwidth limit
 	MaxConnections    int        `json:"max_connections"`     // Max concurrent connections
+	ActiveConnections int        `json:"active_connections"`  // Current unique IPs connected (from hub)
 	HasActiveLicense  bool       `json:"has_active_license"`  // Computed: has valid non-expired license
 
 	// Domain blocking
@@ -191,6 +195,7 @@ func (p *Phone) ToResponse() PhoneResponse {
 		LicenseAutoExtend: p.LicenseAutoExtend,
 		SpeedLimitMbps:    p.SpeedLimitMbps,
 		MaxConnections:    p.MaxConnections,
+		ActiveConnections: p.ActiveConnections,
 		HasActiveLicense:  hasActiveLicense,
 
 		// Domain blocking

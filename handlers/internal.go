@@ -56,9 +56,16 @@ type UsageReport struct {
 
 // UsageBatch represents a batch of usage reports from a hub
 type UsageBatch struct {
-	HubID     string        `json:"hub_id"`
-	Timestamp time.Time     `json:"timestamp"`
-	Reports   []UsageReport `json:"reports"`
+	HubID            string             `json:"hub_id"`
+	Timestamp        time.Time          `json:"timestamp"`
+	Reports          []UsageReport      `json:"reports"`
+	PhoneConnections []PhoneActiveConns `json:"phone_connections,omitempty"` // Real-time unique IPs per phone
+}
+
+// PhoneActiveConns represents current active connections for a phone
+type PhoneActiveConns struct {
+	PhoneID           string `json:"phone_id"`
+	ActiveConnections int    `json:"active_connections"` // Current unique IPs (30-min TTL)
 }
 
 // GetHubSyncState returns the full state for a hub to restore after reboot
@@ -325,9 +332,17 @@ func ReportUsage(c *gin.Context) {
 		}
 	}
 
+	// Update per-phone active connections (real-time unique IPs from hub)
+	for _, phoneConn := range batch.PhoneConnections {
+		database.DB.Model(&models.Phone{}).
+			Where("id = ?", phoneConn.PhoneID).
+			Update("active_connections", phoneConn.ActiveConnections)
+	}
+
 	c.JSON(http.StatusAccepted, gin.H{
-		"message": "Usage reported",
-		"count":   len(batch.Reports),
+		"message":       "Usage reported",
+		"count":         len(batch.Reports),
+		"phones_updated": len(batch.PhoneConnections),
 	})
 }
 
