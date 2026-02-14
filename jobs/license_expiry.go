@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/droidproxy/api/database"
+	"github.com/droidproxy/api/internal/infra"
 	"github.com/droidproxy/api/models"
+	"github.com/google/uuid"
 )
 
 // StartLicenseExpiryJob runs the license expiry check periodically
@@ -66,13 +68,11 @@ func processExpiredLicense(license models.PhoneLicense) {
 		return
 	}
 
-	// Update phone - clear plan info
+	// Update phone - keep plan_tier/license_expires_at for UI display, just clear limits
+	// The UI checks license_expires_at to determine if license is expired
 	if err := tx.Model(&models.Phone{}).Where("id = ?", license.PhoneID).Updates(map[string]interface{}{
-		"plan_tier":          nil,
-		"license_expires_at": nil,
-		"has_active_license": false,
-		"speed_limit_mbps":   0,
-		"max_connections":    0,
+		"speed_limit_mbps": 0,
+		"max_connections":  0,
 	}).Error; err != nil {
 		tx.Rollback()
 		log.Printf("[Jobs] Error updating phone: %v", err)
@@ -96,6 +96,29 @@ func processExpiredLicense(license models.PhoneLicense) {
 
 	tx.Commit()
 	log.Printf("[Jobs] Successfully expired license for phone %s", license.PhoneID)
+
+	// Trigger hub reconciliation to remove proxies immediately
+	go triggerHubReconciliationForPhone(license.PhoneID)
+}
+
+// triggerHubReconciliationForPhone triggers a hub to resync after license expiry
+func triggerHubReconciliationForPhone(phoneID uuid.UUID) {
+	var phone models.Phone
+	if err := database.DB.Preload("HubServer").First(&phone, "id = ?", phoneID).Error; err != nil {
+		log.Printf("[Jobs] Warning: failed to load phone for reconciliation: %v", err)
+		return
+	}
+	if phone.HubServer != nil && phone.HubServer.HubAPIKey != "" {
+		if err := infra.TriggerReconcileV2(
+			phone.HubServer.IP,
+			phone.HubServer.HubAPIPort,
+			phone.HubServer.HubAPIKey,
+		); err != nil {
+			log.Printf("[Jobs] Warning: failed to trigger hub reconciliation: %v", err)
+		} else {
+			log.Printf("[Jobs] Triggered hub reconciliation for %s after license expiry", phone.HubServer.Name)
+		}
+	}
 }
 
 // cleanupOldExpiredPhones deletes phones that have been expired for more than 14 days

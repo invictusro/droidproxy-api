@@ -76,29 +76,30 @@ func GetPhoneLicense(c *gin.Context) {
 		return
 	}
 
-	// Find active license first
+	// Find most recent license (active or expired status)
 	var license models.PhoneLicense
-	if err := database.DB.Where("phone_id = ? AND status = ?", phoneID, models.LicenseActive).
+	if err := database.DB.Where("phone_id = ?", phoneID).
 		Order("expires_at DESC").
 		First(&license).Error; err == nil {
-		// Active license found
+		// Check if license is actually expired (even if status hasn't been updated by job)
+		now := time.Now()
+		isExpired := now.After(license.ExpiresAt) || license.Status == models.LicenseExpired
+
+		if isExpired {
+			// Force status to expired for response (job may not have run yet)
+			license.Status = models.LicenseExpired
+			c.JSON(http.StatusOK, gin.H{
+				"has_license": false,
+				"license":     license.ToResponse(),
+				"plans":       getPlansResponse(),
+			})
+			return
+		}
+
+		// Active license
 		c.JSON(http.StatusOK, gin.H{
 			"has_license": true,
 			"license":     license.ToResponse(),
-			"plans":       getPlansResponse(),
-		})
-		return
-	}
-
-	// Check for expired license (for "Extend" functionality)
-	var expiredLicense models.PhoneLicense
-	if err := database.DB.Where("phone_id = ? AND status = ?", phoneID, models.LicenseExpired).
-		Order("expires_at DESC").
-		First(&expiredLicense).Error; err == nil {
-		// Expired license found - allow extending
-		c.JSON(http.StatusOK, gin.H{
-			"has_license": false,
-			"license":     expiredLicense.ToResponse(),
 			"plans":       getPlansResponse(),
 		})
 		return

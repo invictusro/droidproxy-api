@@ -28,7 +28,6 @@ type ResellerPhoneResponse struct {
 	SpeedLimitMbps    int       `json:"speed_limit_mbps"`
 	ActiveConnections int       `json:"active_connections"`
 	ServerLocation    string    `json:"server_location,omitempty"`
-	ServerIP          string    `json:"server_ip,omitempty"`
 	SIMCountry        string    `json:"sim_country,omitempty"`
 	SIMCarrier        string    `json:"sim_carrier,omitempty"`
 	CreatedAt         string    `json:"created_at"`
@@ -59,11 +58,11 @@ func ListResellerPhones(c *gin.Context) {
 	apiKey := middleware.GetAPIKey(c)
 	userID := middleware.GetCurrentUserID(c)
 
-	// Base query - only Nitro phones with active license
+	// Base query - only Nitro phones with active license (license_expires_at > now)
 	query := database.DB.Model(&models.Phone{}).
 		Preload("HubServer").
 		Where("user_id = ?", userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true)
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now())
 
 	// Filter by groups if scope is 'groups'
 	if apiKey.Scope == "groups" && len(apiKey.GroupIDs) > 0 {
@@ -107,7 +106,7 @@ func GetResellerPhone(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Preload("HubServer").
 		Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible (requires Nitro plan)"})
 		return
@@ -136,7 +135,7 @@ func ListResellerCredentials(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Preload("HubServer").
 		Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -177,7 +176,7 @@ func GetResellerCredential(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Preload("HubServer").
 		Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -211,7 +210,7 @@ func CreateResellerCredential(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Preload("HubServer").
 		Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -343,7 +342,7 @@ func DeleteResellerCredential(c *gin.Context) {
 	// Verify phone access
 	var phone models.Phone
 	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -381,7 +380,7 @@ func GetResellerRotation(c *gin.Context) {
 	// Verify phone access
 	var phone models.Phone
 	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -425,7 +424,7 @@ func SetResellerRotation(c *gin.Context) {
 	// Verify phone access
 	var phone models.Phone
 	if err := database.DB.Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -514,7 +513,7 @@ func ResellerRotateIP(c *gin.Context) {
 	var phone models.Phone
 	if err := database.DB.Preload("HubServer").
 		Where("id = ? AND user_id = ?", phoneID, userID).
-		Where("plan_tier = ? AND has_active_license = ?", "nitro", true).
+		Where("plan_tier = ? AND license_expires_at > ?", "nitro", time.Now()).
 		First(&phone).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found or not eligible"})
 		return
@@ -557,10 +556,8 @@ func phoneToResellerResponse(phone *models.Phone) ResellerPhoneResponse {
 	}
 
 	serverLocation := ""
-	serverIP := ""
 	if phone.HubServer != nil {
 		serverLocation = phone.HubServer.Location
-		serverIP = phone.HubServer.IP
 	}
 
 	return ResellerPhoneResponse{
@@ -574,7 +571,6 @@ func phoneToResellerResponse(phone *models.Phone) ResellerPhoneResponse {
 		SpeedLimitMbps:    phone.SpeedLimitMbps,
 		ActiveConnections: phone.ActiveConnections,
 		ServerLocation:    serverLocation,
-		ServerIP:          serverIP,
 		SIMCountry:        phone.SimCountry,
 		SIMCarrier:        phone.SimCarrier,
 		CreatedAt:         phone.CreatedAt.Format(time.RFC3339),
