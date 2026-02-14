@@ -271,10 +271,10 @@ func CreateResellerCredential(c *gin.Context) {
 		return
 	}
 
-	// Generate password if userpass auth
+	// Generate password if userpass auth (8 characters)
 	var password string
 	if req.AuthType == "userpass" {
-		bytes := make([]byte, 12)
+		bytes := make([]byte, 4)
 		rand.Read(bytes)
 		password = hex.EncodeToString(bytes)
 	}
