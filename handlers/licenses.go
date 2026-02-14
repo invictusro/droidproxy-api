@@ -280,7 +280,7 @@ func UpdatePhoneLicense(c *gin.Context) {
 	})
 }
 
-// CancelLicense cancels an active license
+// CancelLicense cancels auto-renewal for an active license (license remains active until expiry)
 func CancelLicense(c *gin.Context) {
 	user := middleware.GetCurrentUser(c)
 	phoneID, err := uuid.Parse(c.Param("id"))
@@ -304,36 +304,21 @@ func CancelLicense(c *gin.Context) {
 		return
 	}
 
-	tx := database.DB.Begin()
-
-	// Update license status to cancelled
-	if err := tx.Model(&license).Updates(map[string]interface{}{
-		"status":     models.LicenseCancelled,
-		"updated_at": time.Now(),
+	// Disable auto-extend on both license and phone (license remains active until expiry)
+	now := time.Now()
+	if err := database.DB.Model(&license).Updates(map[string]interface{}{
+		"auto_extend": false,
+		"updated_at":  now,
 	}).Error; err != nil {
-		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel license"})
 		return
 	}
 
-	// Clear phone plan fields
-	if err := tx.Model(&phone).Updates(map[string]interface{}{
-		"plan_tier":           nil,
-		"license_expires_at":  nil,
-		"license_auto_extend": false,
-		"speed_limit_mbps":    0,
-		"max_connections":     0,
-		"log_retention_weeks": 0,
-	}).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update phone"})
-		return
-	}
-
-	tx.Commit()
+	database.DB.Model(&phone).Update("license_auto_extend", false)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "License cancelled successfully",
+		"message":    "License cancelled - will not renew after expiry",
+		"expires_at": license.ExpiresAt,
 	})
 }
 
