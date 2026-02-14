@@ -542,8 +542,10 @@ func phoneToResellerResponse(phone *models.Phone) ResellerPhoneResponse {
 	status := "offline"
 	if phone.PairedAt == nil {
 		status = "pending"
+	} else if phone.MetricsUpdatedAt != nil && time.Since(*phone.MetricsUpdatedAt) < 3*time.Minute {
+		// If metrics were updated in the last 3 minutes, phone is online
+		status = "online"
 	}
-	// Note: Real-time status would come from Centrifugo, not stored
 
 	daysRemaining := 0
 	expiresAt := ""
