@@ -83,6 +83,11 @@ func (p *Phone) BeforeCreate(tx *gorm.DB) error {
 	if p.PairingPIN == "" {
 		p.PairingPIN = generatePairingPIN()
 	}
+	// Generate placeholder API token to satisfy unique constraint
+	// Will be replaced with a new token during pairing
+	if p.APIToken == "" {
+		p.APIToken = GenerateAPIToken()
+	}
 	return nil
 }
 
