@@ -290,23 +290,23 @@ func GetAllPhonesUsage(c *gin.Context) {
 }
 
 // CleanupOldUsageData removes old data
-// Data usage: 90 days, Uptime: 30 days, Access logs: per-user setting (1-12 weeks)
+// Data usage: 60 days, Uptime: 7 days, Access logs: per-user setting (1-12 weeks)
 // Should be called periodically (e.g., daily cron job)
 func CleanupOldUsageData(c *gin.Context) {
 	now := time.Now()
-	ninetyDaysAgo := now.AddDate(0, 0, -90)
-	thirtyDaysAgo := now.AddDate(0, 0, -30)
+	sixtyDaysAgo := now.AddDate(0, 0, -60)
+	sevenDaysAgo := now.AddDate(0, 0, -7)
 
-	// Delete data usage older than 90 days
-	result := database.DB.Where("date < ?", ninetyDaysAgo).Delete(&models.PhoneDataUsage{})
+	// Delete data usage older than 60 days
+	result := database.DB.Where("date < ?", sixtyDaysAgo).Delete(&models.PhoneDataUsage{})
 	deletedUsage := result.RowsAffected
 
-	// Delete uptime logs older than 30 days
-	result = database.DB.Where("timestamp < ?", thirtyDaysAgo).Delete(&models.PhoneUptimeLog{})
+	// Delete uptime logs older than 7 days
+	result = database.DB.Where("timestamp < ?", sevenDaysAgo).Delete(&models.PhoneUptimeLog{})
 	deletedLogs := result.RowsAffected
 
-	// Delete daily uptime older than 30 days
-	result = database.DB.Where("date < ?", thirtyDaysAgo).Delete(&models.PhoneDailyUptime{})
+	// Delete daily uptime older than 7 days
+	result = database.DB.Where("date < ?", sevenDaysAgo).Delete(&models.PhoneDailyUptime{})
 	deletedDaily := result.RowsAffected
 
 	// Delete old phone stats (keep last 24 hours)

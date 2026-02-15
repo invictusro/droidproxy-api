@@ -553,6 +553,7 @@ func CentrifugoPublishProxy(c *gin.Context) {
 			RAMTotalMB      int64  `json:"ram_total_mb"`
 			DeviceModel     string `json:"device_model"`
 			OSVersion       string `json:"os_version"`
+			AppVersion      int    `json:"app_version"`
 		} `json:"data"`
 	}
 
@@ -605,6 +606,9 @@ func CentrifugoPublishProxy(c *gin.Context) {
 	if req.Data.DeviceModel != "" {
 		updates["device_model"] = req.Data.DeviceModel
 		updates["os_version"] = req.Data.OSVersion
+	}
+	if req.Data.AppVersion > 0 {
+		updates["app_version"] = req.Data.AppVersion
 	}
 	if len(updates) > 0 {
 		updates["metrics_updated_at"] = now

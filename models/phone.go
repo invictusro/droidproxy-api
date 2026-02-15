@@ -63,6 +63,7 @@ type Phone struct {
 	RAMTotalMB       int64      `json:"ram_total_mb"`       // Total RAM in MB
 	DeviceModel      string     `json:"device_model"`       // Device model (e.g., "Google Pixel 6a")
 	OSVersion        string     `json:"os_version"`         // OS version (e.g., "Android 14")
+	AppVersion       int        `json:"app_version"`        // APK version number (e.g., 10)
 	MetricsUpdatedAt *time.Time `json:"metrics_updated_at"` // Last metrics update
 
 	// Real-time connection stats (from hub-api usage reports)
@@ -148,6 +149,7 @@ type PhoneResponse struct {
 	RAMTotalMB       int64      `json:"ram_total_mb"`
 	DeviceModel      string     `json:"device_model"`
 	OSVersion        string     `json:"os_version"`
+	AppVersion       int        `json:"app_version"`
 	MetricsUpdatedAt *time.Time `json:"metrics_updated_at"`
 
 	CreatedAt time.Time `json:"created_at"`
@@ -215,6 +217,7 @@ func (p *Phone) ToResponse() PhoneResponse {
 		RAMTotalMB:       p.RAMTotalMB,
 		DeviceModel:      p.DeviceModel,
 		OSVersion:        p.OSVersion,
+		AppVersion:       p.AppVersion,
 		MetricsUpdatedAt: p.MetricsUpdatedAt,
 
 		CreatedAt: p.CreatedAt,
