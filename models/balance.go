@@ -25,6 +25,8 @@ const (
 	ReasonAdminCredit     TransactionReason = "admin_credit"
 	ReasonAdminDebit      TransactionReason = "admin_debit"
 	ReasonRefund          TransactionReason = "refund"
+	ReasonStripeTopup     TransactionReason = "stripe_topup"
+	ReasonAutoCharge      TransactionReason = "auto_charge" // Auto-charged for license renewal
 )
 
 // BalanceTransaction records all balance changes
@@ -37,6 +39,10 @@ type BalanceTransaction struct {
 	ReferenceID *uuid.UUID        `gorm:"type:uuid" json:"reference_id,omitempty"` // PhoneID or LicenseID
 	Description string            `json:"description"`
 	CreatedAt   time.Time         `gorm:"index" json:"created_at"`
+
+	// Stripe tracking
+	StripeInvoiceID       string `gorm:"type:varchar(255)" json:"stripe_invoice_id,omitempty"`
+	StripePaymentIntentID string `gorm:"type:varchar(255)" json:"stripe_payment_intent_id,omitempty"`
 
 	// Relationships
 	User User `gorm:"foreignKey:UserID" json:"-"`

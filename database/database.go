@@ -50,6 +50,7 @@ func Migrate() error {
 		&models.AccessLog{},
 		&models.PhoneLicense{},
 		&models.BalanceTransaction{},
+		&models.PaymentMethod{},
 		&models.SystemSetting{},
 		&models.APIKey{},
 	)

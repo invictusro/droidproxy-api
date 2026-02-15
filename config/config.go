@@ -36,6 +36,11 @@ type Config struct {
 	Rage4DomainName  string `mapstructure:"RAGE4_DOMAIN_NAME"`  // Base domain (e.g., "yalx.in")
 	Rage4CNAMEPrefix string `mapstructure:"RAGE4_CNAME_PREFIX"` // CNAME prefix (e.g., "cn" for *.cn.yalx.in)
 
+	// Stripe
+	StripeSecretKey      string `mapstructure:"STRIPE_SECRET_KEY"`
+	StripeWebhookSecret  string `mapstructure:"STRIPE_WEBHOOK_SECRET"`
+	StripePublishableKey string `mapstructure:"STRIPE_PUBLISHABLE_KEY"`
+
 	// Server
 	Port        string `mapstructure:"PORT"`
 	Env         string `mapstructure:"ENV"`
@@ -73,6 +78,11 @@ func Load() (*Config, error) {
 	viper.BindEnv("RAGE4_DOMAIN_ID")
 	viper.BindEnv("RAGE4_DOMAIN_NAME")
 	viper.BindEnv("RAGE4_CNAME_PREFIX")
+
+	// Stripe
+	viper.BindEnv("STRIPE_SECRET_KEY")
+	viper.BindEnv("STRIPE_WEBHOOK_SECRET")
+	viper.BindEnv("STRIPE_PUBLISHABLE_KEY")
 
 	// Set defaults
 	viper.SetDefault("PORT", "8080")
@@ -120,6 +130,9 @@ func Load() (*Config, error) {
 		Rage4DomainID:         viper.GetInt64("RAGE4_DOMAIN_ID"),
 		Rage4DomainName:       viper.GetString("RAGE4_DOMAIN_NAME"),
 		Rage4CNAMEPrefix:      viper.GetString("RAGE4_CNAME_PREFIX"),
+		StripeSecretKey:       viper.GetString("STRIPE_SECRET_KEY"),
+		StripeWebhookSecret:   viper.GetString("STRIPE_WEBHOOK_SECRET"),
+		StripePublishableKey:  viper.GetString("STRIPE_PUBLISHABLE_KEY"),
 		Port:                  viper.GetString("PORT"),
 		Env:                   viper.GetString("ENV"),
 		FrontendURL:           viper.GetString("FRONTEND_URL"),
