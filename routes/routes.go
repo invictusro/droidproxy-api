@@ -17,7 +17,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 
 	// CORS configuration
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.FrontendURL, "http://localhost:3000", "http://localhost:5173"},
+		AllowOrigins:     []string{cfg.FrontendURL, "https://panel.droidproxy.com", "http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Phone-ID", "X-Phone-Token", "X-Signature", "X-Timestamp", "X-API-Key"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -90,6 +90,9 @@ func Setup(cfg *config.Config) *gin.Engine {
 	// Centrifugo proxy endpoint (updates database when phones publish status)
 	r.POST("/centrifugo/publish", handlers.CentrifugoPublishProxy)
 
+	// Stripe webhook (no auth - verified via signature)
+	r.POST("/webhooks/stripe", handlers.HandleStripeWebhook)
+
 	// Phone-authenticated routes (requires X-Phone-ID and X-Phone-Token headers)
 	// These endpoints are exclusively for paired phones
 	phoneAPI := r.Group("/phone")
@@ -121,6 +124,12 @@ func Setup(cfg *config.Config) *gin.Engine {
 		// Balance
 		api.GET("/me/balance", handlers.GetBalance)
 		api.GET("/me/balance/transactions", handlers.GetBalanceTransactions)
+		api.POST("/me/balance/topup", handlers.CreateTopUp)
+
+		// Payment Methods
+		api.GET("/me/payment-methods", handlers.GetPaymentMethods)
+		api.DELETE("/me/payment-methods/:id", handlers.DeletePaymentMethod)
+		api.PUT("/me/payment-methods/:id/default", handlers.SetDefaultPaymentMethod)
 
 		// Plans (public list)
 		api.GET("/plans", handlers.GetAvailablePlans)
