@@ -442,6 +442,13 @@ func PairPhone(c *gin.Context) {
 	phone.DeviceFingerprint = fingerprintHash
 	database.DB.Save(&phone)
 
+	// Notify dashboard that phone was paired (real-time via Centrifugo)
+	phonecomm.PublishToUser(phone.UserID.String(), map[string]interface{}{
+		"type":       "phone_paired",
+		"phone_id":   phone.ID.String(),
+		"phone_name": phone.Name,
+	})
+
 	// Add WireGuard peer to hub server (synchronous - must succeed for proxy to work)
 	if phone.HubServer != nil && phone.WireGuardPublicKey != "" && phone.WireGuardIP != "" {
 		if err := infra.AddWireGuardPeerV2(
@@ -868,6 +875,13 @@ func PhoneLogin(c *gin.Context) {
 	phone.PublicKey = publicKeyPEM
 	phone.DeviceFingerprint = fingerprintHash
 	database.DB.Save(&phone)
+
+	// Notify dashboard that phone was paired (real-time via Centrifugo)
+	phonecomm.PublishToUser(phone.UserID.String(), map[string]interface{}{
+		"type":       "phone_paired",
+		"phone_id":   phone.ID.String(),
+		"phone_name": phone.Name,
+	})
 
 	// Add WireGuard peer to hub server (synchronous - must succeed for proxy to work)
 	if phone.HubServer != nil && phone.WireGuardPublicKey != "" && phone.WireGuardIP != "" {
