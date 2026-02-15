@@ -16,6 +16,7 @@ import (
 	"github.com/droidproxy/api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // CreatePhoneRequest is the request body for creating a phone
@@ -1141,8 +1142,8 @@ func UpdatePhoneBlockedDomains(c *gin.Context) {
 		return
 	}
 
-	// Update blocked domains
-	if err := database.DB.Model(&phone).Update("blocked_domains", req.BlockedDomains).Error; err != nil {
+	// Update blocked domains (convert to pq.StringArray for postgres)
+	if err := database.DB.Model(&phone).Update("blocked_domains", pq.StringArray(req.BlockedDomains)).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update blocked domains"})
 		return
 	}
