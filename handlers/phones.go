@@ -257,6 +257,14 @@ func DeletePhone(c *gin.Context) {
 		return
 	}
 
+	// Send logout command to phone via Centrifugo (if phone is online, it will log out immediately)
+	// If phone is offline, it will fail auth on next API call since phone record will be deleted
+	phonecomm.PublishToPhone(phone.ID.String(), map[string]interface{}{
+		"type":    "command",
+		"command": "logout",
+		"reason":  "phone_deleted",
+	})
+
 	// Clean up server-side resources (GOST forwarder, route, WireGuard peer)
 	go cleanupPhoneServerResources(&phone)
 
@@ -943,12 +951,38 @@ func GetProxyConfig(c *gin.Context) {
 	// Generate fresh Centrifugo token
 	centrifugoToken, _ := phonecomm.GeneratePhoneToken(phone.ID.String())
 
+	// Get license info
+	var license models.PhoneLicense
+	hasLicense := false
+	var planTier string
+	var expiresAt *string
+	speedLimit := 0
+	maxConnections := 0
+
+	if err := database.DB.Where("phone_id = ? AND status = ?", phone.ID, models.LicenseActive).
+		Order("expires_at DESC").First(&license).Error; err == nil {
+		if license.IsActive() {
+			hasLicense = true
+			planTier = string(license.PlanTier)
+			expStr := license.ExpiresAt.Format("2006-01-02T15:04:05Z")
+			expiresAt = &expStr
+			limits := models.GetPlanLimits(license.PlanTier)
+			speedLimit = limits.SpeedLimitMbps
+			maxConnections = limits.MaxConnections
+		}
+	}
+
 	c.JSON(http.StatusOK, models.ProxyConfigResponse{
-		PhoneID:         phone.ID.String(),
-		ServerIP:        phone.HubServer.IP,
-		WireGuardConfig: phone.WireGuardConfig,
-		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
-		CentrifugoToken: centrifugoToken,
+		PhoneID:          phone.ID.String(),
+		ServerIP:         phone.HubServer.IP,
+		WireGuardConfig:  phone.WireGuardConfig,
+		CentrifugoURL:    config.AppConfig.CentrifugoPublicURL,
+		CentrifugoToken:  centrifugoToken,
+		HasLicense:       hasLicense,
+		LicensePlanTier:  planTier,
+		LicenseExpiresAt: expiresAt,
+		SpeedLimitMbps:   speedLimit,
+		MaxConnections:   maxConnections,
 	})
 }
 
@@ -1202,6 +1236,55 @@ func RepairPhone(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Phone repair completed",
 		"results": results,
+	})
+}
+
+// FindPhone sends a find_phone command to make the phone play sound/vibrate
+// Only available for Nitro plan users
+func FindPhone(c *gin.Context) {
+	user := middleware.GetCurrentUser(c)
+	phoneID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone ID"})
+		return
+	}
+
+	var phone models.Phone
+	query := database.DB
+	if user.Role != "admin" {
+		query = query.Where("user_id = ?", user.ID)
+	}
+	if err := query.First(&phone, "id = ?", phoneID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Phone not found"})
+		return
+	}
+
+	// Check if phone has Nitro license
+	if phone.PlanTier != "nitro" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Find Phone feature is only available for Nitro plan users"})
+		return
+	}
+
+	// Check if license is active
+	if phone.LicenseExpiresAt == nil || time.Now().After(*phone.LicenseExpiresAt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "License has expired"})
+		return
+	}
+
+	// Send find_phone command via Centrifugo
+	err = phonecomm.PublishToPhone(phone.ID.String(), map[string]interface{}{
+		"type":    "command",
+		"command": "find_phone",
+	})
+	if err != nil {
+		log.Printf("[FindPhone] Failed to send command to phone %s: %v", phone.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send command to phone"})
+		return
+	}
+
+	log.Printf("[FindPhone] Sent find_phone command to phone %s", phone.ID)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Find phone command sent",
 	})
 }
 

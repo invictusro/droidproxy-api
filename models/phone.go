@@ -281,6 +281,12 @@ type ProxyConfigResponse struct {
 	WireGuardConfig string `json:"wireguard_config"`
 	CentrifugoURL   string `json:"centrifugo_url"`
 	CentrifugoToken string `json:"centrifugo_token"`
+	// License info
+	HasLicense       bool    `json:"has_license"`
+	LicensePlanTier  string  `json:"license_plan_tier,omitempty"`  // lite, turbo, nitro
+	LicenseExpiresAt *string `json:"license_expires_at,omitempty"` // ISO 8601
+	SpeedLimitMbps   int     `json:"speed_limit_mbps"`
+	MaxConnections   int     `json:"max_connections"`
 }
 
 // HeartbeatRequest is sent periodically from the Android app

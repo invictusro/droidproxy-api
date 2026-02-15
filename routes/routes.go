@@ -143,6 +143,7 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.POST("/phones/:id/rotate-ip", handlers.RotateIP)
 		api.POST("/phones/:id/restart", handlers.RestartProxy)
 		api.POST("/phones/:id/repair", handlers.RepairPhone)
+		api.POST("/phones/:id/find", handlers.FindPhone)
 		api.POST("/phones/:id/setup-dns", handlers.SetupPhoneDNS)
 		api.GET("/phones/:id/stats", handlers.GetPhoneStats)
 
