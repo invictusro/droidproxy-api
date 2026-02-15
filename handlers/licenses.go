@@ -8,11 +8,38 @@ import (
 
 	"github.com/droidproxy/api/database"
 	"github.com/droidproxy/api/internal/infra"
+	phonecomm "github.com/droidproxy/api/internal/phone"
 	"github.com/droidproxy/api/middleware"
 	"github.com/droidproxy/api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// publishLicenseUpdate sends license info to the phone via Centrifugo
+func publishLicenseUpdate(phone *models.Phone) {
+	var expiresAt *string
+	if phone.LicenseExpiresAt != nil {
+		formatted := phone.LicenseExpiresAt.Format(time.RFC3339)
+		expiresAt = &formatted
+	}
+
+	err := phonecomm.PublishToPhone(phone.ID.String(), map[string]interface{}{
+		"type":    "command",
+		"command": "license_update",
+		"data": map[string]interface{}{
+			"has_license":      phone.PlanTier != "" && phone.LicenseExpiresAt != nil && time.Now().Before(*phone.LicenseExpiresAt),
+			"plan_tier":        phone.PlanTier,
+			"expires_at":       expiresAt,
+			"speed_limit_mbps": phone.SpeedLimitMbps,
+			"max_connections":  phone.MaxConnections,
+		},
+	})
+	if err != nil {
+		log.Printf("Warning: failed to publish license update to phone %s: %v", phone.ID, err)
+	} else {
+		log.Printf("Published license update to phone %s: %s plan", phone.ID, phone.PlanTier)
+	}
+}
 
 // roundToWholeDollars rounds cents to whole dollar amounts
 // Rounds up if remainder >= 25 cents, otherwise rounds down
@@ -238,8 +265,7 @@ func PurchaseLicense(c *gin.Context) {
 
 	tx.Commit()
 
-	// Trigger hub reconciliation to apply new speed limits
-	// This is done async to not block the response
+	// Trigger hub reconciliation and notify phone (async)
 	go func() {
 		// Reload phone with hub server info
 		var phoneWithHub models.Phone
@@ -247,6 +273,8 @@ func PurchaseLicense(c *gin.Context) {
 			log.Printf("Warning: failed to load phone for reconciliation: %v", err)
 			return
 		}
+
+		// Trigger hub reconciliation to apply new speed limits
 		if phoneWithHub.HubServer != nil && phoneWithHub.HubServer.HubAPIKey != "" {
 			if err := infra.TriggerReconcileV2(
 				phoneWithHub.HubServer.IP,
@@ -258,6 +286,9 @@ func PurchaseLicense(c *gin.Context) {
 				log.Printf("Triggered hub reconciliation for %s after license purchase", phoneWithHub.HubServer.Name)
 			}
 		}
+
+		// Push license update to phone via Centrifugo
+		publishLicenseUpdate(&phoneWithHub)
 	}()
 
 	c.JSON(http.StatusOK, gin.H{
@@ -643,8 +674,15 @@ func ChangePlan(c *gin.Context) {
 
 		tx.Commit()
 
-		// Trigger hub reconciliation
-		go triggerHubReconciliation(phoneID)
+		// Trigger hub reconciliation and push license update
+		go func() {
+			triggerHubReconciliation(phoneID)
+			// Reload phone to get updated values
+			var updatedPhone models.Phone
+			if err := database.DB.First(&updatedPhone, "id = ?", phoneID).Error; err == nil {
+				publishLicenseUpdate(&updatedPhone)
+			}
+		}()
 
 		c.JSON(http.StatusOK, gin.H{
 			"message":       "Plan upgraded successfully",
@@ -693,8 +731,15 @@ func ChangePlan(c *gin.Context) {
 
 		tx.Commit()
 
-		// Trigger hub reconciliation
-		go triggerHubReconciliation(phoneID)
+		// Trigger hub reconciliation and push license update
+		go func() {
+			triggerHubReconciliation(phoneID)
+			// Reload phone to get updated values
+			var updatedPhone models.Phone
+			if err := database.DB.First(&updatedPhone, "id = ?", phoneID).Error; err == nil {
+				publishLicenseUpdate(&updatedPhone)
+			}
+		}()
 
 		c.JSON(http.StatusOK, gin.H{
 			"message":     "Plan downgraded successfully",
