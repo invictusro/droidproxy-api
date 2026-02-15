@@ -276,8 +276,12 @@ func DeletePhone(c *gin.Context) {
 		}
 	}
 
-	// Delete all related records (foreign key constraints)
+	// Delete all related records (order matters due to foreign key constraints)
+	// 1. Access logs reference credentials, so delete them first
+	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.AccessLog{})
+	// 2. Now we can delete credentials
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.ConnectionCredential{})
+	// 3. Delete other phone-related records
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.RotationToken{})
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneStats{})
 	database.DB.Where("phone_id = ?", phone.ID).Delete(&models.PhoneDataUsage{})
