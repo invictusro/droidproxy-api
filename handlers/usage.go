@@ -12,7 +12,7 @@ import (
 )
 
 // GetPhoneDataUsage returns data usage for a specific phone
-// Supports optional query params: start_date, end_date (format: 2006-01-02)
+// Supports optional query params: start_date, end_date (format: 2006-01-02), credential_id
 func GetPhoneDataUsage(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	phoneID, err := uuid.Parse(c.Param("id"))
@@ -34,6 +34,7 @@ func GetPhoneDataUsage(c *gin.Context) {
 	// Parse optional date range params
 	startDateStr := c.Query("start_date")
 	endDateStr := c.Query("end_date")
+	credentialIDStr := c.Query("credential_id")
 
 	var startDate, endDate time.Time
 	if startDateStr != "" {
@@ -55,7 +56,55 @@ func GetPhoneDataUsage(c *gin.Context) {
 		endDate = today.Add(24*time.Hour - time.Second)
 	}
 
-	// Get usage for date range
+	// If credential_id is specified, aggregate from access logs
+	if credentialIDStr != "" {
+		credentialID, err := uuid.Parse(credentialIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid credential ID"})
+			return
+		}
+
+		// Get usage from access logs grouped by date
+		type DailyAgg struct {
+			Date     time.Time
+			BytesIn  int64
+			BytesOut int64
+		}
+		var dailyAggs []DailyAgg
+		database.DB.Model(&models.AccessLog{}).
+			Select("DATE(timestamp) as date, SUM(bytes_in) as bytes_in, SUM(bytes_out) as bytes_out").
+			Where("phone_id = ? AND credential_id = ? AND timestamp >= ? AND timestamp <= ?", phoneID, credentialID, startDate, endDate).
+			Group("DATE(timestamp)").
+			Order("date DESC").
+			Find(&dailyAggs)
+
+		totalSummary := models.DataUsageSummary{}
+		daily := make([]models.DailyDataUsage, len(dailyAggs))
+		for i, u := range dailyAggs {
+			totalSummary.BytesIn += u.BytesIn
+			totalSummary.BytesOut += u.BytesOut
+			daily[i] = models.DailyDataUsage{
+				Date:     u.Date.Format("2006-01-02"),
+				BytesIn:  u.BytesIn,
+				BytesOut: u.BytesOut,
+				Total:    u.BytesIn + u.BytesOut,
+			}
+		}
+		totalSummary.Total = totalSummary.BytesIn + totalSummary.BytesOut
+
+		c.JSON(http.StatusOK, gin.H{
+			"phone_id":      phoneID.String(),
+			"phone_name":    phone.Name,
+			"credential_id": credentialID.String(),
+			"start_date":    startDate.Format("2006-01-02"),
+			"end_date":      endDate.Format("2006-01-02"),
+			"total":         totalSummary,
+			"daily":         daily,
+		})
+		return
+	}
+
+	// Get usage for date range (all credentials)
 	var dailyUsage []models.PhoneDataUsage
 	database.DB.Where("phone_id = ? AND date >= ? AND date <= ?", phoneID, startDate, endDate).
 		Order("date DESC").Find(&dailyUsage)
@@ -75,13 +124,40 @@ func GetPhoneDataUsage(c *gin.Context) {
 	}
 	totalSummary.Total = totalSummary.BytesIn + totalSummary.BytesOut
 
+	// Get per-credential breakdown from access logs
+	type CredentialUsage struct {
+		CredentialID   uuid.UUID
+		CredentialName string
+		BytesIn        int64
+		BytesOut       int64
+	}
+	var credentialUsages []CredentialUsage
+	database.DB.Model(&models.AccessLog{}).
+		Select("access_logs.credential_id, connection_credentials.name as credential_name, SUM(access_logs.bytes_in) as bytes_in, SUM(access_logs.bytes_out) as bytes_out").
+		Joins("LEFT JOIN connection_credentials ON access_logs.credential_id = connection_credentials.id").
+		Where("access_logs.phone_id = ? AND access_logs.timestamp >= ? AND access_logs.timestamp <= ?", phoneID, startDate, endDate).
+		Group("access_logs.credential_id, connection_credentials.name").
+		Find(&credentialUsages)
+
+	byCredential := make([]gin.H, len(credentialUsages))
+	for i, cu := range credentialUsages {
+		byCredential[i] = gin.H{
+			"credential_id":   cu.CredentialID.String(),
+			"credential_name": cu.CredentialName,
+			"bytes_in":        cu.BytesIn,
+			"bytes_out":       cu.BytesOut,
+			"total":           cu.BytesIn + cu.BytesOut,
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"phone_id":   phoneID.String(),
-		"phone_name": phone.Name,
-		"start_date": startDate.Format("2006-01-02"),
-		"end_date":   endDate.Format("2006-01-02"),
-		"total":      totalSummary,
-		"daily":      daily,
+		"phone_id":      phoneID.String(),
+		"phone_name":    phone.Name,
+		"start_date":    startDate.Format("2006-01-02"),
+		"end_date":      endDate.Format("2006-01-02"),
+		"total":         totalSummary,
+		"daily":         daily,
+		"by_credential": byCredential,
 	})
 }
 
