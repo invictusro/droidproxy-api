@@ -23,20 +23,24 @@ const (
 )
 
 type User struct {
-	ID           uuid.UUID    `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	Email        string       `gorm:"uniqueIndex;not null" json:"email"`
-	Name         string       `gorm:"not null" json:"name"`
-	Password     string       `gorm:"" json:"-"`
-	Picture      string       `json:"picture"`
-	Role         UserRole     `gorm:"default:user" json:"role"`
-	AuthProvider AuthProvider `gorm:"default:local" json:"auth_provider"`
-	GoogleID     *string      `gorm:"uniqueIndex" json:"-"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	ID               uuid.UUID    `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	Email            string       `gorm:"uniqueIndex;not null" json:"email"`
+	Name             string       `gorm:"not null" json:"name"`
+	Password         string       `gorm:"" json:"-"`
+	Picture          string       `json:"picture"`
+	TelegramUsername string       `gorm:"type:varchar(255)" json:"telegram_username"` // Optional Telegram username (without @)
+	Role             UserRole     `gorm:"default:user" json:"role"`
+	AuthProvider     AuthProvider `gorm:"default:local" json:"auth_provider"`
+	GoogleID         *string      `gorm:"uniqueIndex" json:"-"`
+	CreatedAt        time.Time    `json:"created_at"`
+	UpdatedAt        time.Time    `json:"updated_at"`
 
 	// Balance (in cents)
 	Balance          int64      `gorm:"default:0" json:"balance"`
 	BalanceUpdatedAt *time.Time `json:"balance_updated_at"`
+
+	// Stripe integration
+	StripeCustomerID string `gorm:"type:varchar(255)" json:"-"` // Stripe customer ID for payments
 
 	// Relationships
 	Phones []Phone `gorm:"foreignKey:UserID" json:"phones,omitempty"`
@@ -71,23 +75,25 @@ func (u *User) IsAdmin() bool {
 
 // UserResponse is the public representation of a user
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	Picture   string    `json:"picture"`
-	Role      UserRole  `json:"role"`
-	Balance   int64     `json:"balance"` // Balance in cents
-	CreatedAt time.Time `json:"created_at"`
+	ID               uuid.UUID `json:"id"`
+	Email            string    `json:"email"`
+	Name             string    `json:"name"`
+	Picture          string    `json:"picture"`
+	TelegramUsername string    `json:"telegram_username,omitempty"`
+	Role             UserRole  `json:"role"`
+	Balance          int64     `json:"balance"` // Balance in cents
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func (u *User) ToResponse() UserResponse {
 	return UserResponse{
-		ID:        u.ID,
-		Email:     u.Email,
-		Name:      u.Name,
-		Picture:   u.Picture,
-		Role:      u.Role,
-		Balance:   u.Balance,
-		CreatedAt: u.CreatedAt,
+		ID:               u.ID,
+		Email:            u.Email,
+		Name:             u.Name,
+		Picture:          u.Picture,
+		TelegramUsername: u.TelegramUsername,
+		Role:             u.Role,
+		Balance:          u.Balance,
+		CreatedAt:        u.CreatedAt,
 	}
 }

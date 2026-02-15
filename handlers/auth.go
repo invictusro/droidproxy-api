@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/droidproxy/api/config"
@@ -99,9 +100,10 @@ func GoogleCallback(c *gin.Context) {
 
 // RegisterRequest is the request body for registration
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	Name     string `json:"name" binding:"required,min=2"`
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required,min=6"`
+	Name             string `json:"name" binding:"required,min=2"`
+	TelegramUsername string `json:"telegram_username"` // Optional
 }
 
 // Register creates a new user with email/password
@@ -121,10 +123,11 @@ func Register(c *gin.Context) {
 
 	// Create new user
 	user := models.User{
-		Email:        req.Email,
-		Name:         req.Name,
-		AuthProvider: models.AuthLocal,
-		Role:         models.RoleUser,
+		Email:            req.Email,
+		Name:             req.Name,
+		TelegramUsername: sanitizeTelegramUsername(req.TelegramUsername),
+		AuthProvider:     models.AuthLocal,
+		Role:             models.RoleUser,
 	}
 
 	// Hash password
@@ -227,6 +230,15 @@ func Logout(c *gin.Context) {
 	// For JWT-based auth, logout is handled client-side by removing the token
 	// Optionally, you could maintain a token blacklist here
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+// sanitizeTelegramUsername removes @ prefix if present and trims whitespace
+func sanitizeTelegramUsername(username string) string {
+	username = strings.TrimSpace(username)
+	if strings.HasPrefix(username, "@") {
+		username = strings.TrimPrefix(username, "@")
+	}
+	return username
 }
 
 // generateJWT creates a JWT token for a user
