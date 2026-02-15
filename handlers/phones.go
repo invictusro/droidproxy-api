@@ -1147,6 +1147,26 @@ func UpdatePhoneBlockedDomains(c *gin.Context) {
 		return
 	}
 
+	// Trigger hub reconciliation to apply new blocked domains
+	go func() {
+		var phoneWithHub models.Phone
+		if err := database.DB.Preload("HubServer").First(&phoneWithHub, "id = ?", phoneID).Error; err != nil {
+			log.Printf("Warning: failed to load phone for reconciliation: %v", err)
+			return
+		}
+		if phoneWithHub.HubServer != nil && phoneWithHub.HubServer.HubAPIKey != "" {
+			if err := infra.TriggerReconcileV2(
+				phoneWithHub.HubServer.IP,
+				phoneWithHub.HubServer.HubAPIPort,
+				phoneWithHub.HubServer.HubAPIKey,
+			); err != nil {
+				log.Printf("Warning: failed to trigger hub reconciliation for blocked domains: %v", err)
+			} else {
+				log.Printf("Triggered hub reconciliation for %s after blocked domains update", phoneWithHub.HubServer.Name)
+			}
+		}
+	}()
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":         "Blocked domains updated",
 		"blocked_domains": req.BlockedDomains,

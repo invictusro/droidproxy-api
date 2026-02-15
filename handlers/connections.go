@@ -579,8 +579,9 @@ func startCredentialProxy(phone *models.Phone, credential *models.ConnectionCred
 		}
 	}
 
-	if len(credential.BlockedDomains) > 0 {
-		credMap["blocked_domains"] = []string(credential.BlockedDomains)
+	// Use phone-level blocked domains (not credential-level)
+	if len(phone.BlockedDomains) > 0 {
+		credMap["blocked_domains"] = []string(phone.BlockedDomains)
 	}
 
 	// Determine protocol from credential's proxy type
@@ -668,8 +669,9 @@ func updateCredentialProxy(phone *models.Phone, credential *models.ConnectionCre
 		}
 	}
 
-	if len(credential.BlockedDomains) > 0 {
-		credMap["blocked_domains"] = []string(credential.BlockedDomains)
+	// Use phone-level blocked domains (not credential-level)
+	if len(phone.BlockedDomains) > 0 {
+		credMap["blocked_domains"] = []string(phone.BlockedDomains)
 	}
 
 	log.Printf("[updateCredentialProxy] Updating credentials on port %d for credential %s",

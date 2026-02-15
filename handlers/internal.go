@@ -121,7 +121,7 @@ func GetHubSyncState(c *gin.Context) {
 					AuthType:        string(cred.AuthType),
 					LimitBytes:      uint64(cred.BandwidthLimit),
 					ConnectionLimit: cred.ConnectionLimit,
-					BlockedDomains:  cred.BlockedDomains,
+					BlockedDomains:  phone.BlockedDomains, // Use phone-level blocked domains
 					UdpEnabled:      cred.UdpEnabled,
 				}
 
