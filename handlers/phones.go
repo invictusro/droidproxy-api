@@ -233,6 +233,15 @@ func UpdatePhone(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update phone"})
 			return
 		}
+
+		// Notify the phone of the name change via Centrifugo
+		phonecomm.PublishToPhone(phone.ID.String(), map[string]interface{}{
+			"type":    "command",
+			"command": "phone_name_update",
+			"data": map[string]interface{}{
+				"name": phone.Name,
+			},
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -491,6 +500,7 @@ func PairPhone(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
+		PhoneName:       phone.Name,
 		APIToken:        apiToken,
 		WireGuardConfig: wireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
@@ -924,6 +934,7 @@ func PhoneLogin(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.PairingResponse{
 		PhoneID:         phone.ID.String(),
+		PhoneName:       phone.Name,
 		APIToken:        apiToken,
 		WireGuardConfig: wireGuardConfig,
 		CentrifugoURL:   config.AppConfig.CentrifugoPublicURL,
@@ -974,6 +985,7 @@ func GetProxyConfig(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.ProxyConfigResponse{
 		PhoneID:          phone.ID.String(),
+		PhoneName:        phone.Name,
 		ServerIP:         phone.HubServer.IP,
 		WireGuardConfig:  phone.WireGuardConfig,
 		CentrifugoURL:    config.AppConfig.CentrifugoPublicURL,

@@ -266,17 +266,19 @@ type PhoneLoginInfo struct {
 // PairingResponse is sent back to the Android app
 type PairingResponse struct {
 	PhoneID         string `json:"phone_id"`
-	APIToken        string `json:"api_token"` // Secure token for phone API authentication
+	PhoneName       string `json:"phone_name"` // Name set by user in dashboard
+	APIToken        string `json:"api_token"`  // Secure token for phone API authentication
 	WireGuardConfig string `json:"wireguard_config"`
 	CentrifugoURL   string `json:"centrifugo_url"`
 	CentrifugoToken string `json:"centrifugo_token"`
 	APIBaseURL      string `json:"api_base_url"`
-	ServerIP        string `json:"server_ip"`   // VPS IP for proxy connection
+	ServerIP        string `json:"server_ip"` // VPS IP for proxy connection
 }
 
 // ProxyConfigResponse contains proxy configuration for the phone
 type ProxyConfigResponse struct {
 	PhoneID         string `json:"phone_id"`
+	PhoneName       string `json:"phone_name"`
 	ServerIP        string `json:"server_ip"`
 	WireGuardConfig string `json:"wireguard_config"`
 	CentrifugoURL   string `json:"centrifugo_url"`
