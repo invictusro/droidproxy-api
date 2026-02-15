@@ -86,8 +86,9 @@ func handleCheckoutCompleted(session *stripe.CheckoutSession) {
 	}
 
 	topupType, ok := session.Metadata["type"]
-	if !ok || topupType != "balance_topup" {
-		log.Printf("Checkout completed but not a balance topup: %s", topupType)
+	// Accept both balance_topup (legacy) and balance_deposit (new billing system)
+	if !ok || (topupType != "balance_topup" && topupType != "balance_deposit") {
+		log.Printf("Checkout completed but not a balance topup/deposit: %s", topupType)
 		return
 	}
 
@@ -111,6 +112,11 @@ func handleCheckoutCompleted(session *stripe.CheckoutSession) {
 
 	// Credit the user's balance
 	creditBalance(userID, amount, session.PaymentIntent.ID, "")
+
+	// Sync billing profile from Stripe customer details (for balance_deposit type)
+	if topupType == "balance_deposit" {
+		syncBillingProfile(userID, session)
+	}
 }
 
 // handlePaymentIntentSucceeded processes successful payment intents
@@ -213,6 +219,74 @@ func creditBalance(userID uuid.UUID, amount int64, paymentIntentID, invoiceID st
 	tx.Commit()
 	log.Printf("Successfully credited $%.2f to user %s. New balance: $%.2f",
 		float64(amount)/100, userID, float64(newBalance)/100)
+}
+
+// syncBillingProfile syncs billing profile from Stripe checkout session
+func syncBillingProfile(userID uuid.UUID, session *stripe.CheckoutSession) {
+	var user models.User
+	if err := database.DB.First(&user, "id = ?", userID).Error; err != nil {
+		log.Printf("syncBillingProfile: User not found: %s", userID)
+		return
+	}
+
+	updates := make(map[string]interface{})
+
+	// Extract customer details from session
+	if session.CustomerDetails != nil {
+		if session.CustomerDetails.Name != "" {
+			updates["billing_name"] = session.CustomerDetails.Name
+		}
+
+		// Extract address
+		if session.CustomerDetails.Address != nil {
+			addr := session.CustomerDetails.Address
+			if addr.Line1 != "" {
+				updates["billing_address"] = addr.Line1
+				if addr.Line2 != "" {
+					updates["billing_address"] = addr.Line1 + ", " + addr.Line2
+				}
+			}
+			if addr.City != "" {
+				updates["billing_city"] = addr.City
+			}
+			if addr.State != "" {
+				updates["billing_county"] = addr.State
+			}
+			if addr.Country != "" {
+				updates["billing_country"] = addr.Country
+			}
+		}
+
+		// Extract Tax ID (CUI/VAT)
+		if len(session.CustomerDetails.TaxIDs) > 0 {
+			for _, taxID := range session.CustomerDetails.TaxIDs {
+				// Accept eu_vat, ro_tin, or any other tax ID type
+				if taxID.Value != "" {
+					updates["billing_cui"] = taxID.Value
+					break
+				}
+			}
+		}
+	}
+
+	// Set billing_day on first deposit (if not already set)
+	if user.BillingDay == nil {
+		today := time.Now().Day()
+		if today > 28 {
+			today = 28 // Cap at 28 to avoid February issues
+		}
+		updates["billing_day"] = today
+		log.Printf("syncBillingProfile: Set billing_day=%d for user %s", today, userID)
+	}
+
+	// Apply updates
+	if len(updates) > 0 {
+		if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+			log.Printf("syncBillingProfile: Failed to update user: %v", err)
+			return
+		}
+		log.Printf("syncBillingProfile: Updated billing profile for user %s", userID)
+	}
 }
 
 // savePaymentMethod saves a payment method for future use

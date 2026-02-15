@@ -22,3 +22,8 @@ Thumbs.db
 
 # NPM cache (from web-ui builds)
 .npm-cache/
+
+# Binaries
+api
+api_server
+droidproxy-api

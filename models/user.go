@@ -42,6 +42,22 @@ type User struct {
 	// Stripe integration
 	StripeCustomerID string `gorm:"type:varchar(255)" json:"-"` // Stripe customer ID for payments
 
+	// Billing Settings
+	BillingDay           *int       `gorm:"default:null" json:"billing_day"`                         // Anchor day (1-28) for anniversary billing
+	AutoRefillEnabled    bool       `gorm:"default:true" json:"auto_refill_enabled"`                 // Auto-charge on billing day
+	LastAutoRefillAt     *time.Time `json:"last_auto_refill_at"`                                     // Safety: prevent double charges
+	AutoRefillRetryCount int        `gorm:"default:0" json:"auto_refill_retry_count"`                // Failed attempt count (0-3)
+	AutoRefillRetryUntil *time.Time `json:"auto_refill_retry_until"`                                 // Stop retrying after this date
+
+	// Romanian B2B Billing Profile
+	BillingName    string `gorm:"type:varchar(255)" json:"billing_name"`               // Company or full name
+	BillingCUI     string `gorm:"type:varchar(50)" json:"billing_cui"`                 // Tax ID (e.g., RO123456)
+	BillingRegCom  string `gorm:"type:varchar(50)" json:"billing_reg_com"`             // Reg. Com (e.g., J40/...)
+	BillingAddress string `gorm:"type:text" json:"billing_address"`                    // Street address
+	BillingCity    string `gorm:"type:varchar(100)" json:"billing_city"`               // City
+	BillingCounty  string `gorm:"type:varchar(100)" json:"billing_county"`             // County/State
+	BillingCountry string `gorm:"type:varchar(2);default:'RO'" json:"billing_country"` // ISO 2-letter country code
+
 	// Relationships
 	Phones []Phone `gorm:"foreignKey:UserID" json:"phones,omitempty"`
 }
@@ -83,17 +99,29 @@ type UserResponse struct {
 	Role             UserRole  `json:"role"`
 	Balance          int64     `json:"balance"` // Balance in cents
 	CreatedAt        time.Time `json:"created_at"`
+
+	// Billing
+	BillingDay        *int   `json:"billing_day,omitempty"`
+	AutoRefillEnabled bool   `json:"auto_refill_enabled"`
+	BillingName       string `json:"billing_name,omitempty"`
+	BillingCUI        string `json:"billing_cui,omitempty"`
+	BillingCountry    string `json:"billing_country,omitempty"`
 }
 
 func (u *User) ToResponse() UserResponse {
 	return UserResponse{
-		ID:               u.ID,
-		Email:            u.Email,
-		Name:             u.Name,
-		Picture:          u.Picture,
-		TelegramUsername: u.TelegramUsername,
-		Role:             u.Role,
-		Balance:          u.Balance,
-		CreatedAt:        u.CreatedAt,
+		ID:                u.ID,
+		Email:             u.Email,
+		Name:              u.Name,
+		Picture:           u.Picture,
+		TelegramUsername:  u.TelegramUsername,
+		Role:              u.Role,
+		Balance:           u.Balance,
+		CreatedAt:         u.CreatedAt,
+		BillingDay:        u.BillingDay,
+		AutoRefillEnabled: u.AutoRefillEnabled,
+		BillingName:       u.BillingName,
+		BillingCUI:        u.BillingCUI,
+		BillingCountry:    u.BillingCountry,
 	}
 }

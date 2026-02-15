@@ -26,7 +26,9 @@ const (
 	ReasonAdminDebit      TransactionReason = "admin_debit"
 	ReasonRefund          TransactionReason = "refund"
 	ReasonStripeTopup     TransactionReason = "stripe_topup"
-	ReasonAutoCharge      TransactionReason = "auto_charge" // Auto-charged for license renewal
+	ReasonAutoCharge      TransactionReason = "auto_charge"  // Auto-charged for license renewal
+	ReasonAutoRefill      TransactionReason = "auto_refill"  // Anniversary billing auto-refill
+	ReasonBalanceDeposit  TransactionReason = "balance_deposit" // Manual balance deposit
 )
 
 // BalanceTransaction records all balance changes

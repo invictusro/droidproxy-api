@@ -66,6 +66,7 @@ func main() {
 
 	// Start background jobs
 	jobs.StartLicenseExpiryJob()
+	jobs.StartAnniversaryBillingJob()
 
 	// Setup routes
 	router := routes.Setup(cfg)

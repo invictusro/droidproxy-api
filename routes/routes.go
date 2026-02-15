@@ -131,6 +131,14 @@ func Setup(cfg *config.Config) *gin.Engine {
 		api.DELETE("/me/payment-methods/:id", handlers.DeletePaymentMethod)
 		api.PUT("/me/payment-methods/:id/default", handlers.SetDefaultPaymentMethod)
 
+		// Billing (Anniversary Billing System)
+		api.GET("/billing", handlers.GetBillingOverview)
+		api.POST("/billing/deposit", handlers.CreateDeposit)
+		api.GET("/billing/profile", handlers.GetBillingProfile)
+		api.PUT("/billing/profile", handlers.UpdateBillingProfile)
+		api.GET("/billing/settings", handlers.GetBillingSettings)
+		api.PUT("/billing/settings", handlers.UpdateBillingSettings)
+
 		// Plans (public list)
 		api.GET("/plans", handlers.GetAvailablePlans)
 
